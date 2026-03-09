@@ -1,0 +1,64 @@
+{
+  "feeds": [
+    {
+      "name": "Netflix Tech Blog",
+      "url": "https://netflixtechblog.com/feed",
+      "category": "streaming-infra",
+      "tags": ["netflix", "streaming", "scalability", "backend"]
+    },
+    {
+      "name": "Uber Engineering",
+      "url": "https://www.uber.com/en-US/blog/engineering/rss/",
+      "category": "ride-hailing-infra",
+      "tags": ["uber", "distributed-systems", "real-time", "backend"]
+    },
+    {
+      "name": "Meta Engineering",
+      "url": "https://engineering.fb.com/feed/",
+      "category": "social-platform",
+      "tags": ["meta", "facebook", "open-source", "ai", "infrastructure"]
+    },
+    {
+      "name": "DoorDash Engineering",
+      "url": "https://doordash.engineering/feed/",
+      "category": "marketplace-tech",
+      "tags": ["doordash", "marketplace", "microservices", "kotlin", "java"]
+    },
+    {
+      "name": "Google Developers",
+      "url": "https://developers.googleblog.com/feeds/posts/default",
+      "category": "cloud-platform",
+      "tags": ["google", "cloud", "ai", "developer-tools", "open-source"]
+    },
+    {
+      "name": "AWS Blog",
+      "url": "https://aws.amazon.com/blogs/aws/feed/",
+      "category": "cloud-infra",
+      "tags": ["aws", "cloud", "serverless", "kubernetes", "devops"]
+    },
+    {
+      "name": "LinkedIn Engineering",
+      "url": "https://engineering.linkedin.com/blog.rss",
+      "category": "professional-network",
+      "tags": ["linkedin", "distributed-systems", "data-engineering", "java"]
+    },
+    {
+      "name": "Airbnb Tech",
+      "url": "https://medium.com/feed/airbnb-engineering",
+      "category": "marketplace-tech",
+      "tags": ["airbnb", "marketplace", "data", "ml", "backend"]
+    },
+    {
+      "name": "Cloudflare Blog",
+      "url": "https://blog.cloudflare.com/rss/",
+      "category": "network-security",
+      "tags": ["cloudflare", "cdn", "security", "performance", "edge"]
+    },
+    {
+      "name": "GitHub Blog Engineering",
+      "url": "https://github.blog/engineering.atom",
+      "category": "developer-tools",
+      "tags": ["github", "devtools", "ci-cd", "platform", "open-source"]
+    }
+  ]
+}

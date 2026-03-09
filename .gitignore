@@ -8,3 +8,9 @@ resources/
 # Editor
 .vscode/
 *.swp
+
+# Python venv
+.venv/
+
+# Trend writer cache
+scripts/.seen_articles.json

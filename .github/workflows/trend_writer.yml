@@ -1,0 +1,97 @@
+name: Trend Writer — Daily Tech Insight Post
+
+on:
+  schedule:
+    # KST 09:00 = UTC 00:00
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (포스트 생성만, commit 하지 않음)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "trend-writer"
+  cancel-in-progress: true
+
+jobs:
+  write-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
+          fetch-depth: 0
+
+      # ── 2. Python 환경 세팅 ──────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scripts/requirements.txt
+
+      # ── 3. 의존성 설치 ───────────────────────────
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      # ── 4. 포스트 생성 ───────────────────────────
+      - name: Generate tech insight post
+        id: generate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          output=$(python scripts/trend_writer.py 2>&1)
+          echo "$output"
+          created_file=$(echo "$output" | grep 'CREATED_FILE=' | tail -1 | cut -d'=' -f2-)
+          echo "created_file=$created_file" >> "$GITHUB_OUTPUT"
+          echo "created_filename=$(basename "$created_file")" >> "$GITHUB_OUTPUT"
+
+      # ── 5. Git 설정 ──────────────────────────────
+      - name: Configure git user
+        run: |
+          git config user.name "Trend Writer Bot"
+          git config user.email "bot@gnosyslambda.github.io"
+
+      # ── 6. 변경사항 커밋 & 푸시 ─────────────────
+      - name: Commit and push new post
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          git add content/posts/ scripts/.seen_articles.json || true
+          
+          if git diff --cached --quiet; then
+            echo "📭 새 포스트가 없습니다. 변경사항 없음."
+            exit 0
+          fi
+          
+          FILENAME="${{ steps.generate.outputs.created_filename }}"
+          KST_DATE=$(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')
+          
+          git commit -m "feat: 글로벌 기술 인사이트 포스트 발행 (${KST_DATE})
+
+          - 파일: ${FILENAME}
+          - 자동 생성: trend_writer.py + Gemini 1.5 Flash
+          - 14년 차 백엔드 개발자 페르소나 기반 한국어 재해석"
+          
+          git push origin main
+
+      # ── 7. 결과 요약 ─────────────────────────────
+      - name: Summary
+        run: |
+          echo "## ✅ Trend Writer 완료" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **생성 파일**: ${{ steps.generate.outputs.created_filename }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **실행 시각**: $(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **배포 URL**: https://gnosyslambda.github.io/posts/" >> "$GITHUB_STEP_SUMMARY"
