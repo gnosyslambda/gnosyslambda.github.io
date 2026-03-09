@@ -62,7 +62,7 @@ jobs:
       - name: Configure git user
         run: |
           git config user.name "Trend Writer Bot"
-          git config user.email "bot@sectoreye.github.io"
+          git config user.email "bot@gnosyslambda.github.io"
 
       # ── 6. 변경사항 커밋 & 푸시 ─────────────────
       - name: Commit and push new post
@@ -94,4 +94,4 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **생성 파일**: ${{ steps.generate.outputs.created_filename }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **실행 시각**: $(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **배포 URL**: https://sectoreye.github.io/posts/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **배포 URL**: https://gnosyslambda.github.io/posts/" >> "$GITHUB_STEP_SUMMARY"
