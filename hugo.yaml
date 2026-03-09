@@ -1,5 +1,7 @@
 baseURL: "https://gnosyslambda.github.io/"
+languageCode: ko-KR
 title: "gnosyslambda's log"
+theme: PaperMod
 paginate: 10
 
 enableRobotsTXT: true
