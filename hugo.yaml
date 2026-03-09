@@ -1,7 +1,5 @@
 baseURL: "https://gnosyslambda.github.io/"
-languageCode: ko-KR
-title: "sectoreye's log"
-theme: PaperMod
+title: "gnosyslambda's log"
 paginate: 10
 
 enableRobotsTXT: true
@@ -46,6 +44,7 @@ params:
     favicon32x32: "/favicon-32x32.png"
     apple_touch_icon: "/apple-touch-icon.png"
     safari_pinned_tab: "/safari-pinned-tab.svg"
+    custom_css: ["css/extended/custom_font.css"]
 
   label:
     text: "gnosyslambda's log"

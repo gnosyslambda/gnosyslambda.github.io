@@ -197,12 +197,15 @@ def select_best_article(articles: list[dict], genai_client, model: str) -> dict 
 # ─────────────────────────────────────────────
 # 4. 원문 크롤링
 # ─────────────────────────────────────────────
-def fetch_article_body(url: str) -> str:
-    """URL에서 본문 텍스트 추출. 실패 시 빈 문자열 반환."""
+def fetch_article_body(url: str) -> tuple[str, str]:
+    """URL에서 본문 텍스트와 커버 이미지 URL 추출. 실패 시 빈 문자열 반환."""
     try:
         resp = requests.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
+
+        # 본문 추출 전 이미지/메타데이터 추출
+        cover_image = _extract_cover_image(soup)
 
         # 불필요한 요소 제거
         for tag in soup(["script", "style", "nav", "footer", "header", "aside", "ads"]):
@@ -214,13 +217,30 @@ def fetch_article_body(url: str) -> str:
             if container:
                 text = re.sub(r"\s+", " ", container.get_text()).strip()
                 if len(text) > 500:
-                    return text[:MAX_BODY_CHARS]
+                    return text[:MAX_BODY_CHARS], cover_image
 
         # fallback
-        return re.sub(r"\s+", " ", soup.get_text()).strip()[:MAX_BODY_CHARS]
+        return re.sub(r"\s+", " ", soup.get_text()).strip()[:MAX_BODY_CHARS], cover_image
     except Exception as e:
         log.warning(f"본문 크롤링 실패 ({url}): {e}")
-        return ""
+        return "", ""
+
+def _extract_cover_image(soup) -> str:
+    """원문 HTML에서 og:image 또는 첫 번째 적절한 이미지 URL을 추출합니다."""
+    og_image = soup.find("meta", property="og:image")
+    if og_image and og_image.get("content"):
+        return og_image["content"]
+        
+    twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
+    if twitter_image and twitter_image.get("content"):
+        return twitter_image["content"]
+        
+    for img in soup.find_all("img"):
+        src = img.get("src")
+        if src and src.startswith("http") and not any(x in src.lower() for x in ["icon", "avatar", "logo", "pixel"]):
+            return src
+            
+    return ""
 
 
 # ─────────────────────────────────────────────
@@ -240,32 +260,34 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 대형 이커머스 플랫폼에서 MSA 전환, 트래픽 1000만 RPS 대응, 카산드라/Redis/Kafka 운영 경험이 있습니다.
 현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 글을 씁니다.
 
-아래 원문을 읽고, **반드시 다음 구조**로 한국어 블로그 포스트를 작성하세요.
+아래 원문을 읽고, **반드시 다음 구조와 규칙**으로 한국어 블로그 포스트를 작성하세요.
 
-─────────────── 작성 규칙 ───────────────
-1. 말투: 정중하면서도 실무적인 통찰이 느껴지는 시니어 톤. "~입니다", "~합니다" 체.
-2. 단순 번역 절대 금지. 직접 경험한 것처럼, 또는 비판적인 시각을 섞어 작성.
-3. Java/Kotlin, Spring Boot, JVM 환경과의 비교·분석 반드시 포함.
-4. 마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
-5. 글 길이: 1500~2500자 사이.
+─────────────── 핵심 작성 규칙 (가독성 최우선) ───────────────
+1. **짧은 문단**: 한 문단은 절대 3문장을 넘지 않게 짧게 끊어 쓰세요.
+2. **시각적 요소 적극 활용**: 불릿 포인트(-), 굵은 글씨(**), 인용구(>)를 사용하여 스캐닝(Scanning)하기 좋게 작성하세요. 긴 글은 읽히지 않습니다.
+3. **기술적 증명 (코드/구조 필수)**: 글의 핵심을 설명할 때 반드시 1개 이상의 **코드 스니펫(예시 코드)**이나 **Mermaid 다이어그램**을 마크다운 문법으로 포함하세요. 추상적인 설명보다 눈에 보이는 코드가 훨씬 낫습니다.
+4. **말투**: 정중하면서도 실력있는 시니어의 통찰이 느껴지는 "~입니다", "~합니다" 체.
+5. 단순 번역 절대 금지. 직접 경험한 것처럼, 또는 비판적인 시각을 섞어 작성. Java/Kotlin 생태계와의 비교 필수.
+6. 마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
 
 ─────────────── 포스트 구조 ───────────────
 ## 왜 이 기술이 등장했는가? (문제 정의)
-- 기존 방식의 한계, 해결하려는 문제 배경을 구체적으로 서술
+- 기존 방식의 한계, 이 기술이 해결하려는 핵심 Paint Point
+- *단답형, 불릿으로 눈에 띄게 정리할 것*
 
-## 핵심 아키텍처 분석
-- 기술의 핵심 구조와 동작 원리를 다이어그램 없이도 이해되게 설명
-- 복잡한 개념은 실생활 비유 또는 코드 수준 예시 활용
+## 핵심 기술 아키텍처 및 원리
+- 복잡한 것을 쉽게 비유해서 설명
+- **[필수] 핵심 동작을 보여주는 가상 코드(Java/Kotlin 등)나 Mermaid 다이어그램(````mermaid ... ````) 포함**
 
-## 실무 관점의 시사점
-- Java/Kotlin, Spring 생태계에서 이 기술을 적용하거나 벤치마킹할 수 있는 방법
-- 한국 엔터프라이즈 환경(레거시 전환, 규제 이슈, 팀 역량 등)에서의 현실적 고려사항
+## 실무 관점의 시사점 및 적용 방안
+- 한국 엔터프라이즈(Spring Boot, 레거시 환경, 규제 등)에 이를 어떻게 쓸 수 있을까?
+- 맹점이나 한계는 없는가?
 
 ## 14년 차 개발자의 한 줄 평
-> (날카롭고 기억에 남는 한 줄. 칭찬과 비판을 균형있게.)
+> (날카롭고 기억에 남는 한 줄 평. 칭찬과 비판을 균형있게.)
 
 ---
-*원문: [{article['source']}]({article['link']})*
+*참고자료: [{article['source']}]({article['link']})*
 ─────────────────────────────────────────
 
 [원문]
@@ -291,45 +313,65 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 # ─────────────────────────────────────────────
 # 6. Hugo frontmatter + 파일 저장
 # ─────────────────────────────────────────────
-def build_title(article: dict, genai_client, model: str) -> str:
-    """한국어 블로그 제목 생성."""
-    prompt = f"""아래 영문 기사를 보고, 한국 개발자 블로그에 어울리는 **한국어 제목**을 1개만 만들어주세요.
-- 클릭을 유도하되 과장 없이, 기술적 핵심이 드러나야 합니다.
-- 부제목 없이 제목 하나만 출력하세요.
-- 최대 40자.
+def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> dict:
+    """한국어 제목, 영문 SEO 슬러그, SEO 키워드를 한 번에 생성합니다."""
+    prompt = f"""아래 원문을 기반으로 다음 3가지를 JSON 형식으로 추출해주세요.
+
+1. **title**: 클릭을 유도하되 과장 없이 기술적 핵심이 드러나는 한국어 제목 (최대 40자, 부제목 없이)
+2. **slug**: URL에 사용할 영문 SEO 슬러그 (소문자, 알파벳과 하이픈만 포함, 3~6단어 길이의 핵심 키워드 압축)
+3. **keywords**: 구글 검색 노출을 위한 SEO 최적화된 핵심 기술 키워드 (영문/한글 혼합 가능, 5~7개)
 
 기사 제목: {article['title']}
-출처: {article['source']}
+기사 요약: {article['summary'][:300]}
 
-한국어 제목:"""
+응답 형식 (오직 JSON만 출력):
+{{
+  "title": "한국어 제목",
+  "slug": "english-seo-friendly-slug",
+  "keywords": ["키워드1", "keyword2", ...]
+}}"""
     try:
         response = genai_client.models.generate_content(model=model, contents=prompt)
-        return response.text.strip().strip('"').strip("'")
-    except Exception:
-        return article["title"]
+        raw = response.text.strip()
+        json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+    except Exception as e:
+        log.warning(f"메타데이터 생성 실패: {e}")
+
+    # Fallback
+    return {
+        "title": article["title"],
+        "slug": "",
+        "keywords": ["tech", "development", "backend"]
+    }
 
 
-def build_tags(article: dict) -> list[str]:
+def build_tags(article: dict, new_keywords: list[str]) -> list[str]:
     base = article.get("tags", [])
-    # 공통 태그 추가
-    return list(set(base + ["해외-기술-블로그", "백엔드", "아키텍처"]))
+    combined = list(set(base + new_keywords + ["해외기술블로그", "백엔드", "아키텍처"]))
+    return [t.replace(" ", "-") for t in combined]
 
 
 def slugify(text: str) -> str:
-    """제목을 파일명 슬러그로 변환."""
+    """Fallback filename slug."""
     text = re.sub(r"[^\w\s-]", "", text.lower())
     text = re.sub(r"[\s_]+", "-", text)
     return text.strip("-")[:60]
 
 
-def save_post(title: str, article: dict, body: str) -> Path:
+def save_post(meta: dict, article: dict, body: str) -> Path:
     POSTS_DIR.mkdir(parents=True, exist_ok=True)
     kst = timezone(timedelta(hours=9))
     now_kst = datetime.now(tz=kst)
     date_str = now_kst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
     date_prefix = now_kst.strftime("%Y-%m-%d")
 
-    slug = slugify(title) or slugify(article["title"])
+    # Use AI generated english slug, fallback to title slug
+    title = meta["title"]
+    slug = meta.get("slug") or slugify(title) or slugify(article["title"])
+    slug = slugify(slug)  # ensure safe characters
+    
     filename = f"{date_prefix}-{slug}.md"
     filepath = POSTS_DIR / filename
 
@@ -339,7 +381,7 @@ def save_post(title: str, article: dict, body: str) -> Path:
         filepath = POSTS_DIR / f"{date_prefix}-{slug}-{counter}.md"
         counter += 1
 
-    tags_yaml = "\n".join(f'  - "{t}"' for t in build_tags(article))
+    tags_yaml = "\n".join(f'  - "{t}"' for t in build_tags(article, meta.get("keywords", [])))
     frontmatter = f"""---
 date: '{date_str}'
 draft: false
@@ -350,8 +392,8 @@ categories:
   - "글로벌 테크 인사이트"
 description: "{article['summary'][:150].replace('"', "'")}"
 cover:
-  image: ""
-  alt: ""
+  image: "{meta.get('cover_image', '')}"
+  alt: "Cover image"
   relative: false
 showToc: true
 TocOpen: true
@@ -401,19 +443,22 @@ def main():
 
     # 5. 본문 크롤링
     log.info(f"🌐 본문 크롤링: {best['link']}")
-    body_raw = fetch_article_body(best["link"])
-    log.info(f"   추출 길이: {len(body_raw)}자")
+    body_raw, cover_image = fetch_article_body(best["link"])
+    log.info(f"   추출 길이: {len(body_raw)}자 / 커버 이미지: {'O' if cover_image else 'X'}")
 
-    # 6. 한국어 제목 생성
-    ko_title = build_title(best, genai_client, model)
-    log.info(f"📝 생성된 제목: {ko_title}")
+    # 6. 메타데이터 (제목, 슬러그, SEO 키워드) 추출
+    log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
+    meta = build_title_and_slug(best, body_raw, genai_client, model)
+    meta['cover_image'] = cover_image
+    log.info(f"📝 생성된 제목: {meta['title']}")
+    log.info(f"🔗 SEO 슬러그: {meta['slug']}")
 
     # 7. 포스트 본문 생성
-    log.info("✍️  포스트 작성 중 (Gemini)...")
+    log.info("✍️  포스트 작성 중 (프롬프트 고도화 반영)...")
     post_body = generate_post(best, body_raw, genai_client, model)
 
     # 8. 파일 저장
-    saved_path = save_post(ko_title, best, post_body)
+    saved_path = save_post(meta, best, post_body)
 
     # 9. seen 캐시 업데이트
     seen.add(best["uid"])

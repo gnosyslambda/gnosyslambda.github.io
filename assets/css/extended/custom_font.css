@@ -1,0 +1,16 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
+:root {
+    --font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+}
+
+body {
+    font-family: var(--font-family);
+    word-break: keep-all;     /* 한글 텍스트 단어 단위 줄바꿈 방지 */
+    overflow-wrap: break-word; /* 긴 단어나 URL 깸 방지 */
+}
+
+/* 폰트 굵기 좀 더 선명하게 (Pretendard는 기본적으로 살짝 가벼운 느낌이 들 수 있음) */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+}
