@@ -1,3 +1,163 @@
-baseURL: https://example.org/
-languageCode: en-us
-title: My New Hugo Project
+baseURL: "https://sectoreye.github.io/"
+languageCode: ko-KR
+title: "sectoreye's log"
+theme: PaperMod
+paginate: 10
+
+enableRobotsTXT: true
+buildDrafts: false
+buildFuture: false
+buildExpired: false
+
+minify:
+  disableXML: true
+  minifyOutput: true
+
+params:
+  env: production
+  title: "sectoreye's log"
+  description: "개발자 + AI 테크 블로그. 코드, 아키텍처, AI 도구에 대한 기록."
+  keywords: [developer, AI, tech, blog, golang, typescript, LLM]
+  author: sectoreye
+  images: ["/images/og-image.png"]
+
+  defaultTheme: dark
+  disableThemeToggle: false
+
+  ShowReadingTime: true
+  ShowShareButtons: true
+  ShowPostNavLinks: true
+  ShowBreadCrumbs: true
+  ShowCodeCopyButtons: true
+  ShowWordCount: true
+  ShowRssButtonInSectionTermList: true
+  UseHugoToc: true
+  disableSpecial1stPost: false
+  disableScrollToTop: false
+  comments: true
+  hidemeta: false
+  hideSummary: false
+  showtoc: true
+  tocopen: false
+
+  assets:
+    favicon: "/favicon.ico"
+    favicon16x16: "/favicon-16x16.png"
+    favicon32x32: "/favicon-32x32.png"
+    apple_touch_icon: "/apple-touch-icon.png"
+    safari_pinned_tab: "/safari-pinned-tab.svg"
+
+  label:
+    text: "sectoreye's log"
+    icon: /apple-touch-icon.png
+    iconHeight: 35
+
+  profileMode:
+    enabled: true
+    title: "sectoreye's log"
+    subtitle: "개발자 + AI 테크 블로그 🚀\n코드, 아키텍처, AI 도구에 대한 실전 기록"
+    imageUrl: "https://github.com/sectoreye.png"
+    imageWidth: 120
+    imageHeight: 120
+    imageTitle: sectoreye
+    buttons:
+      - name: Posts
+        url: posts
+      - name: About
+        url: about
+
+  homeInfoParams:
+    Title: "sectoreye's log 🚀"
+    Content: "개발자 + AI 테크 블로그입니다. 코드, 아키텍처, AI 도구에 대한 실전 기록을 남깁니다."
+
+  socialIcons:
+    - name: github
+      url: "https://github.com/sectoreye"
+    - name: rss
+      url: "/index.xml"
+
+  analytics:
+    google:
+      SiteVerificationTag: ""
+
+  cover:
+    hidden: false
+    hiddenInList: false
+    hiddenInSingle: false
+
+  editPost:
+    URL: "https://github.com/sectoreye/sectoreye.github.io/content"
+    Text: "Suggest Changes"
+    appendFilePath: true
+
+  fuseOpts:
+    isCaseSensitive: false
+    shouldSort: true
+    location: 0
+    distance: 1000
+    threshold: 0.4
+    minMatchCharLength: 0
+    limit: 10
+    keys: ["title", "permalink", "summary", "content"]
+
+menu:
+  main:
+    - identifier: posts
+      name: Posts
+      url: /posts/
+      weight: 10
+    - identifier: categories
+      name: Categories
+      url: /categories/
+      weight: 20
+    - identifier: tags
+      name: Tags
+      url: /tags/
+      weight: 30
+    - identifier: archives
+      name: Archives
+      url: /archives/
+      weight: 40
+    - identifier: search
+      name: Search
+      url: /search/
+      weight: 50
+    - identifier: about
+      name: About
+      url: /about/
+      weight: 60
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON
+
+pygmentsUseClasses: true
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+    style: monokai
+    lineNos: false
+    codeFences: true
+    guessSyntax: true
+    tabWidth: 4
+
+privacy:
+  vimeo:
+    disabled: false
+    simple: true
+  x:
+    disabled: false
+    enableDNT: true
+    simple: true
+  instagram:
+    disabled: false
+    simple: true
+  youtube:
+    disabled: false
+    privacyEnhanced: true
