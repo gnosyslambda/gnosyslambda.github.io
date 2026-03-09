@@ -1,7 +1,7 @@
 ---
 date: '2026-03-09T14:00:00+09:00'
 draft: false
-title: '안녕하세요, sectoreye의 기술 블로그입니다'
+title: '안녕하세요, gnosyslambda의 기술 블로그입니다'
 tags: ["블로그", "소개", "개발자", "AI"]
 categories: ["소개"]
 description: "개발자 + AI 테크 블로그를 시작하며. 코드, 아키텍처, AI 도구에 대한 실전 기록을 남기는 공간입니다."

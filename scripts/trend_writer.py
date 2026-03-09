@@ -256,35 +256,34 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 [원문 내용]
 {body if body else "본문을 가져오지 못했습니다. 요약 내용을 기반으로 작성해주세요."}"""
 
-    persona_prompt = f"""당신은 14년 차 Java/Kotlin 백엔드 아키텍트입니다.
-대형 이커머스 플랫폼에서 MSA 전환, 트래픽 1000만 RPS 대응, 카산드라/Redis/Kafka 운영 경험이 있습니다.
-현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 글을 씁니다.
+    persona_prompt = f"""당신은 IT 산업의 흐름과 아키텍처를 날카롭게 분석하는 기술 전문 블로거입니다.
+현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 인사이트 가득한 글을 씁니다.
 
 아래 원문을 읽고, **반드시 다음 구조와 규칙**으로 한국어 블로그 포스트를 작성하세요.
 
-─────────────── 핵심 작성 규칙 (가독성 최우선) ───────────────
+─────────────── 핵심 작성 규칙 (가독성 및 통찰력 최우선) ───────────────
 1. **짧은 문단**: 한 문단은 절대 3문장을 넘지 않게 짧게 끊어 쓰세요.
 2. **시각적 요소 적극 활용**: 불릿 포인트(-), 굵은 글씨(**), 인용구(>)를 사용하여 스캐닝(Scanning)하기 좋게 작성하세요. 긴 글은 읽히지 않습니다.
 3. **기술적 증명 (코드/구조 필수)**: 글의 핵심을 설명할 때 반드시 1개 이상의 **코드 스니펫(예시 코드)**이나 **Mermaid 다이어그램**을 마크다운 문법으로 포함하세요. 추상적인 설명보다 눈에 보이는 코드가 훨씬 낫습니다.
-4. **말투**: 정중하면서도 실력있는 시니어의 통찰이 느껴지는 "~입니다", "~합니다" 체.
-5. 단순 번역 절대 금지. 직접 경험한 것처럼, 또는 비판적인 시각을 섞어 작성. Java/Kotlin 생태계와의 비교 필수.
+4. **글쓰기 스타일 (매우 중요)**: "결론적으로", "요약하자면", "이처럼", "자, 이제" 같은 전형적인 AI 스타일의 접속사나 진부한 문구를 **절대** 사용하지 마세요. 사람이 직접 쓴 것처럼 자연스럽고, 거시적인 통찰력(Insight)이 돋보여야 합니다. 
+5. 단순 번역은 금지합니다. 원문의 기술적 배경을 한국 실무 환경 혹은 글로벌 IT 트렌드와 연관지어 고민한 흔적을 담아주세요.
 6. 마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
 
 ─────────────── 포스트 구조 ───────────────
-## 왜 이 기술이 등장했는가? (문제 정의)
-- 기존 방식의 한계, 이 기술이 해결하려는 핵심 Paint Point
+## 이 기술이 던지는 화두 (문제 정의와 배경)
+- 기존 방식의 한계, 이 기술이 해결하려는 핵심 맥락
 - *단답형, 불릿으로 눈에 띄게 정리할 것*
 
-## 핵심 기술 아키텍처 및 원리
-- 복잡한 것을 쉽게 비유해서 설명
-- **[필수] 핵심 동작을 보여주는 가상 코드(Java/Kotlin 등)나 Mermaid 다이어그램(````mermaid ... ````) 포함**
+## 기술의 핵심 동작 원리 (아키텍처/코드 파고들기)
+- 복잡한 것을 직관적으로 설명 (거시적 관점)
+- **[필수] 동작이나 구조를 보여주는 가상 코드나 Mermaid 다이어그램(````mermaid ... ````) 포함**
 
-## 실무 관점의 시사점 및 적용 방안
-- 한국 엔터프라이즈(Spring Boot, 레거시 환경, 규제 등)에 이를 어떻게 쓸 수 있을까?
-- 맹점이나 한계는 없는가?
+## 실무 적용과 남겨진 과제 (인사이트)
+- 이 기술을 실제 개발/운영 환경에 적용할 때 얻을 수 있는 가치와 현실적인 한계점
+- 다른 기술 스택과의 비교 우위, 앞으로의 발전 방향 등
 
-## 14년 차 개발자의 한 줄 평
-> (날카롭고 기억에 남는 한 줄 평. 칭찬과 비판을 균형있게.)
+## 마치며
+> (전체를 관통하는 날카롭고 깊이 있는 한 줄 평. 뻔한 칭찬 지양.)
 
 ---
 *참고자료: [{article['source']}]({article['link']})*
@@ -315,11 +314,12 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 # ─────────────────────────────────────────────
 def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> dict:
     """한국어 제목, 영문 SEO 슬러그, SEO 키워드를 한 번에 생성합니다."""
-    prompt = f"""아래 원문을 기반으로 다음 3가지를 JSON 형식으로 추출해주세요.
+    prompt = f"""아래 원문을 기반으로 다음 4가지를 JSON 형식으로 추출해주세요.
 
 1. **title**: 클릭을 유도하되 과장 없이 기술적 핵심이 드러나는 한국어 제목 (최대 40자, 부제목 없이)
 2. **slug**: URL에 사용할 영문 SEO 슬러그 (소문자, 알파벳과 하이픈만 포함, 3~6단어 길이의 핵심 키워드 압축)
 3. **keywords**: 구글 검색 노출을 위한 SEO 최적화된 핵심 기술 키워드 (영문/한글 혼합 가능, 5~7개)
+4. **description**: 프론트매터 최상단에 노출될 한국어 요약 (글의 통찰력을 담은 1~2문장 짜리 간결한 설명)
 
 기사 제목: {article['title']}
 기사 요약: {article['summary'][:300]}
@@ -328,7 +328,8 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
 {{
   "title": "한국어 제목",
   "slug": "english-seo-friendly-slug",
-  "keywords": ["키워드1", "keyword2", ...]
+  "keywords": ["키워드1", "keyword2", ...],
+  "description": "이 글은 ..."
 }}"""
     try:
         response = genai_client.models.generate_content(model=model, contents=prompt)
@@ -343,7 +344,8 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
     return {
         "title": article["title"],
         "slug": "",
-        "keywords": ["tech", "development", "backend"]
+        "keywords": ["tech", "development", "backend"],
+        "description": article["summary"][:150]
     }
 
 
@@ -390,7 +392,7 @@ tags:
 {tags_yaml}
 categories:
   - "글로벌 테크 인사이트"
-description: "{article['summary'][:150].replace('"', "'")}"
+description: "{meta.get('description', article['summary'][:150]).replace('"', "'")}"
 cover:
   image: "{meta.get('cover_image', '')}"
   alt: "Cover image"
@@ -416,7 +418,7 @@ def main():
         sys.exit(1)
 
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
-    model = "gemini-2.5-flash"
+    model = "gemini-2.5-pro"
 
     # 1. 이미 처리한 기사 로드
     seen = load_seen()
