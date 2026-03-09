@@ -59,6 +59,12 @@
       "url": "https://github.blog/engineering.atom",
       "category": "developer-tools",
       "tags": ["github", "devtools", "ci-cd", "platform", "open-source"]
+    },
+    {
+      "name": "GeekNews",
+      "url": "https://feeds.feedburner.com/geeknews",
+      "category": "tech-news",
+      "tags": ["geeknews", "tech-news", "startup", "development"]
     }
   ]
 }
