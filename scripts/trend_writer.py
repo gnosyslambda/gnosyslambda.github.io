@@ -238,7 +238,7 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 
     persona_prompt = f"""당신은 14년 차 Java/Kotlin 백엔드 아키텍트입니다.
 대형 이커머스 플랫폼에서 MSA 전환, 트래픽 1000만 RPS 대응, 카산드라/Redis/Kafka 운영 경험이 있습니다.
-현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 글을 씁니다.
+현재 기술 블로그 'sectoreye's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 글을 씁니다.
 
 아래 원문을 읽고, **반드시 다음 구조**로 한국어 블로그 포스트를 작성하세요.
 

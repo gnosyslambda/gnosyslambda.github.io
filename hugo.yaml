@@ -1,4 +1,4 @@
-baseURL: "https://gnosyslambda.github.io/"
+baseURL: "https://sectoreye.github.io/"
 languageCode: ko-KR
 title: "sectoreye's log"
 theme: PaperMod
@@ -15,10 +15,10 @@ minify:
 
 params:
   env: production
-  title: "gnosyslambda's log"
+  title: "sectoreye's log"
   description: "개발자 + AI 테크 블로그. 코드, 아키텍처, AI 도구에 대한 기록."
   keywords: [developer, AI, tech, blog, golang, typescript, LLM]
-  author: gnosyslambda
+  author: sectoreye
   images: ["/images/og-image.png"]
 
   defaultTheme: dark
@@ -48,18 +48,18 @@ params:
     safari_pinned_tab: "/safari-pinned-tab.svg"
 
   label:
-    text: "gnosyslambda's log"
+    text: "sectoreye's log"
     icon: /apple-touch-icon.png
     iconHeight: 35
 
   profileMode:
     enabled: true
-    title: "gnosyslambda's log"
+    title: "sectoreye's log"
     subtitle: "개발자 + AI 테크 블로그 🚀\n코드, 아키텍처, AI 도구에 대한 실전 기록"
-    imageUrl: "https://github.com/gnosyslambda.png"
+    imageUrl: "https://github.com/sectoreye.png"
     imageWidth: 120
     imageHeight: 120
-    imageTitle: gnosyslambda
+    imageTitle: sectoreye
     buttons:
       - name: Posts
         url: posts
@@ -67,12 +67,12 @@ params:
         url: about
 
   homeInfoParams:
-    Title: "gnosyslambda's log 🚀"
+    Title: "sectoreye's log 🚀"
     Content: "개발자 + AI 테크 블로그입니다. 코드, 아키텍처, AI 도구에 대한 실전 기록을 남깁니다."
 
   socialIcons:
     - name: github
-      url: "https://github.com/gnosyslambda"
+      url: "https://github.com/sectoreye"
     - name: rss
       url: "/index.xml"
 
@@ -86,7 +86,7 @@ params:
     hiddenInSingle: false
 
   editPost:
-    URL: "https://github.com/gnosyslambda/gnosyslambda.github.io/content"
+    URL: "https://github.com/sectoreye/sectoreye.github.io/content"
     Text: "Suggest Changes"
     appendFilePath: true
 
