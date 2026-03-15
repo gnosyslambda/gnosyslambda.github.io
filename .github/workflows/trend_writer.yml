@@ -51,12 +51,27 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          set -euo pipefail
-          output=$(python scripts/trend_writer.py 2>&1)
-          echo "$output"
-          created_file=$(echo "$output" | grep 'CREATED_FILE=' | tail -1 | cut -d'=' -f2-)
-          echo "created_file=$created_file" >> "$GITHUB_OUTPUT"
-          echo "created_filename=$(basename "$created_file")" >> "$GITHUB_OUTPUT"
+          set -uo pipefail
+          
+          # 파이썬 스크립트 실행 결과를 파일에 저장하며 동시에 출력
+          python scripts/trend_writer.py 2>&1 | tee output.log
+          
+          # 파이썬 스크립트 실패 시 에러 처리
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "❌ Python script failed."
+            exit 1
+          fi
+          
+          # 출력에서 생성된 파일 경로 추출 (grep 실패 시 무시)
+          created_file=$(grep 'CREATED_FILE=' output.log | tail -1 | cut -d'=' -f2- || true)
+          
+          if [ -n "$created_file" ]; then
+            echo "created_file=$created_file" >> "$GITHUB_OUTPUT"
+            echo "created_filename=$(basename "$created_file")" >> "$GITHUB_OUTPUT"
+          else
+            echo "created_file=" >> "$GITHUB_OUTPUT"
+            echo "created_filename=" >> "$GITHUB_OUTPUT"
+          fi
 
       # ── 5. Git 설정 ──────────────────────────────
       - name: Configure git user
