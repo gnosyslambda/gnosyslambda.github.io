@@ -46,6 +46,8 @@ FETCH_WINDOW_HOURS = 48          # 최근 N시간 기사 수집 (여유 있게 4
 MAX_ARTICLES_TO_SCORE = 15       # LLM 혁신도 평가 최대 기사 수
 MAX_BODY_CHARS = 10000           # 본문 최대 글자 수 (토큰 절약)
 HTTP_TIMEOUT = 15                # 요청 타임아웃(초)
+MAX_SUPPORTING_ARTICLES = 3      # 보조 레퍼런스로 붙일 추가 글 수
+MAX_SUPPORTING_BODY_CHARS = 2500 # 보조 글 본문 최대 길이
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -122,6 +124,13 @@ def _clean_html(text: str) -> str:
 
 def _uid(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
+
+
+def _tokenize_korean_english(text: str) -> set[str]:
+    return {
+        token.lower()
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-+.#]{1,}|[가-힣]{2,}", text)
+    }
 
 
 # ─────────────────────────────────────────────
@@ -225,6 +234,7 @@ def fetch_article_body(url: str) -> tuple[str, str]:
         log.warning(f"본문 크롤링 실패 ({url}): {e}")
         return "", ""
 
+
 def _extract_cover_image(soup) -> str:
     """원문 HTML에서 og:image 또는 첫 번째 적절한 이미지 URL을 추출합니다."""
     og_image = soup.find("meta", property="og:image")
@@ -243,10 +253,60 @@ def _extract_cover_image(soup) -> str:
     return ""
 
 
+def select_supporting_articles(primary: dict, articles: list[dict]) -> list[dict]:
+    """주제적으로 가까운 다른 블로그 글을 보조 레퍼런스로 고른다."""
+    primary_tokens = _tokenize_korean_english(
+        f"{primary['title']} {primary['summary']} {' '.join(primary.get('tags', []))}"
+    )
+    scored: list[tuple[int, dict]] = []
+
+    for article in articles:
+        if article["uid"] == primary["uid"]:
+            continue
+
+        article_tokens = _tokenize_korean_english(
+            f"{article['title']} {article['summary']} {' '.join(article.get('tags', []))}"
+        )
+        overlap = len(primary_tokens & article_tokens)
+        source_bonus = 1 if article["source"] != primary["source"] else 0
+        freshness_bonus = 1 if article.get("published") else 0
+        score = overlap * 3 + source_bonus + freshness_bonus
+
+        if score > 0:
+            scored.append((score, article))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [article for _, article in scored[:MAX_SUPPORTING_ARTICLES]]
+
+
+def build_supporting_context(articles: list[dict]) -> str:
+    if not articles:
+        return "보조 레퍼런스 없음"
+
+    blocks: list[str] = []
+    for idx, article in enumerate(articles, start=1):
+        article_body, _ = fetch_article_body(article["link"])
+        excerpt = article_body[:MAX_SUPPORTING_BODY_CHARS] if article_body else article["summary"]
+        blocks.append(
+            "\n".join(
+                [
+                    f"[보조 레퍼런스 {idx}]",
+                    f"제목: {article['title']}",
+                    f"출처: {article['source']}",
+                    f"URL: {article['link']}",
+                    f"요약: {article['summary']}",
+                    f"발췌: {excerpt or '본문 확보 실패'}",
+                ]
+            )
+        )
+
+    return "\n\n".join(blocks)
+
+
 # ─────────────────────────────────────────────
 # 5. Gemini: 페르소나 기반 한국어 포스트 생성
 # ─────────────────────────────────────────────
-def generate_post(article: dict, body: str, genai_client, model: str) -> str:
+def generate_post(article: dict, body: str, supporting_context: str, genai_client, model: str) -> str:
     """14년 차 백엔드 개발자 페르소나로 한국어 블로그 포스트 생성."""
     source_content = f"""[원문 제목] {article['title']}
 [출처] {article['source']}
@@ -259,15 +319,21 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
     persona_prompt = f"""당신은 IT 산업의 흐름과 아키텍처를 날카롭게 분석하는 기술 전문 블로거입니다.
 현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 인사이트 가득한 글을 씁니다.
 
-아래 원문을 읽고, **반드시 다음 구조와 규칙**으로 한국어 블로그 포스트를 작성하세요.
+**중요 지시사항:**
+1.  주어진 [원문]과 [보조 레퍼런스]만 근거로 사용하세요.
+2.  제공되지 않은 사실, 수치, 제품명, 버전, 사용자 사례를 상상해서 쓰지 마세요.
+3.  단순 요약을 넘어서, 여러 소스를 비판적으로 종합하고 한국 실무 관점의 판단을 분명하게 제시하세요.
+4.  전문 기술 블로그 편집자처럼 쓰세요. 마케팅 문구, 과장, 감탄사는 금지합니다.
 
 ─────────────── 핵심 작성 규칙 (가독성 및 통찰력 최우선) ───────────────
-1. **짧은 문단**: 한 문단은 절대 3문장을 넘지 않게 짧게 끊어 쓰세요.
-2. **시각적 요소 적극 활용**: 불릿 포인트(-), 굵은 글씨(**), 인용구(>)를 사용하여 스캐닝(Scanning)하기 좋게 작성하세요. 긴 글은 읽히지 않습니다.
-3. **기술적 증명 (코드/구조 필수)**: 글의 핵심을 설명할 때 반드시 1개 이상의 **코드 스니펫(예시 코드)**이나 **Mermaid 다이어그램**을 마크다운 문법으로 포함하세요. 추상적인 설명보다 눈에 보이는 코드가 훨씬 낫습니다.
-4. **글쓰기 스타일 (매우 중요)**: "결론적으로", "요약하자면", "이처럼", "자, 이제" 같은 전형적인 AI 스타일의 접속사나 진부한 문구를 **절대** 사용하지 마세요. 사람이 직접 쓴 것처럼 자연스럽고, 거시적인 통찰력(Insight)이 돋보여야 합니다. 
-5. 단순 번역은 금지합니다. 원문의 기술적 배경을 한국 실무 환경 혹은 글로벌 IT 트렌드와 연관지어 고민한 흔적을 담아주세요.
-6. 마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
+1.  **짧은 문단**: 한 문단은 절대 3문장을 넘지 않게 짧게 끊어 쓰세요.
+2.  **시각적 요소 적극 활용**: 불릿 포인트(-), 굵은 글씨(**), 인용구(>)를 사용하여 스캐닝(Scanning)하기 좋게 작성하세요. 긴 글은 읽히지 않습니다.
+3.  **기술적 증명 (코드/구조 필수)**: 글의 핵심을 설명할 때 반드시 1개 이상의 **코드 스니펫(예시 코드)**이나 **Mermaid 다이어그램**을 마크다운 문법으로 포함하세요. 다만 실제 소스에 없는 API 이름을 지어내지 말고, 개념 설명용 예시임을 자연스럽게 드러내세요.
+4.  **글쓰기 스타일 (매우 중요)**: "결론적으로", "요약하자면", "이처럼", "자, 이제" 같은 전형적인 AI 스타일의 접속사나 진부한 문구를 **절대** 사용하지 마세요. 사람이 직접 쓴 것처럼 자연스럽고, 거시적인 통찰력(Insight)이 돋보여야 합니다.
+5.  단순 번역은 금지합니다. 원문의 기술적 배경을 한국 실무 환경 혹은 글로벌 IT 트렌드와 연관지어 고민한 흔적을 담아주세요.
+6.  마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
+7.  독자가 바로 실무 판단에 쓸 수 있게 써야 합니다. 추상적 칭찬보다 적용 조건, 트레이드오프, 운영 리스크를 우선하세요.
+8.  본문 길이는 최소 1,200자 이상으로 작성하세요.
 
 ─────────────── 포스트 구조 ───────────────
 ## 이 기술이 던지는 화두 (문제 정의와 배경)
@@ -281,13 +347,19 @@ def generate_post(article: dict, body: str, genai_client, model: str) -> str:
 ## 실무 적용과 남겨진 과제 (인사이트)
 - 이 기술을 실제 개발/운영 환경에 적용할 때 얻을 수 있는 가치와 현실적인 한계점
 - 다른 기술 스택과의 비교 우위, 앞으로의 발전 방향 등
+- 가능하면 **언제 도입해야 하고, 언제 굳이 도입하지 않아도 되는지**를 분리해서 설명할 것
 
 ## 마치며
 > (전체를 관통하는 날카롭고 깊이 있는 한 줄 평. 뻔한 칭찬 지양.)
 
 ---
-*참고자료: [{article['source']}]({article['link']})*
+*참고자료*
+- [{article['source']}]({article['link']})
+- 보조 레퍼런스에서 실제로 활용한 링크를 1~3개 추가
 ─────────────────────────────────────────
+
+[보조 레퍼런스]
+{supporting_context}
 
 [원문]
 {source_content}
@@ -417,8 +489,15 @@ def main():
         log.error("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
         sys.exit(1)
 
-    genai_client = genai.Client(api_key=GEMINI_API_KEY)
-    model = "gemini-2.5-pro"
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # 모델을 역할에 따라 분리
+    # - Preview Flash: 기사 선정, 메타데이터 생성 등 빠른 작업
+    # - Preview Pro: 최종 포스트 생성 등 고품질 분석 작업
+    flash_model_name = "gemini-3.1-flash-preview"
+    pro_model_name = "gemini-3.1-pro-preview"
+    flash_model = genai.GenerativeModel(flash_model_name)
+    pro_model = genai.GenerativeModel(pro_model_name)
 
     # 1. 이미 처리한 기사 로드
     seen = load_seen()
@@ -434,11 +513,11 @@ def main():
     # 3. 이미 작성된 기사 제외
     fresh = [a for a in articles if a["uid"] not in seen]
     if not fresh:
-        log.info("오늘 처리할 새 기사가 없습니다. 모든 기사를 다시 후보로 사용합니다.")
-        fresh = articles
+        log.info("이미 처리한 기사만 남아 있어 이번 실행은 건너뜁니다.")
+        return
 
-    # 4. 최고 기사 선정
-    best = select_best_article(fresh, genai_client, model)
+    # 4. 최고 기사 선정 (Flash 모델 사용)
+    best = select_best_article(fresh, flash_model, flash_model_name)
     if not best:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
         sys.exit(1)
@@ -448,16 +527,20 @@ def main():
     body_raw, cover_image = fetch_article_body(best["link"])
     log.info(f"   추출 길이: {len(body_raw)}자 / 커버 이미지: {'O' if cover_image else 'X'}")
 
-    # 6. 메타데이터 (제목, 슬러그, SEO 키워드) 추출
+    supporting_articles = select_supporting_articles(best, fresh)
+    supporting_context = build_supporting_context(supporting_articles)
+    log.info(f"📚 보조 레퍼런스 {len(supporting_articles)}건 확보")
+
+    # 6. 메타데이터 (제목, 슬러그, SEO 키워드) 추출 (Flash 모델 사용)
     log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
-    meta = build_title_and_slug(best, body_raw, genai_client, model)
+    meta = build_title_and_slug(best, body_raw, flash_model, flash_model_name)
     meta['cover_image'] = cover_image
     log.info(f"📝 생성된 제목: {meta['title']}")
     log.info(f"🔗 SEO 슬러그: {meta['slug']}")
 
-    # 7. 포스트 본문 생성
-    log.info("✍️  포스트 작성 중 (프롬프트 고도화 반영)...")
-    post_body = generate_post(best, body_raw, genai_client, model)
+    # 7. 포스트 본문 생성 (Pro 모델 사용)
+    log.info("✍️  포스트 작성 중 (원문 + 보조 레퍼런스 기반 전문 분석)...")
+    post_body = generate_post(best, body_raw, supporting_context, pro_model, pro_model_name)
 
     # 8. 파일 저장
     saved_path = save_post(meta, best, post_body)

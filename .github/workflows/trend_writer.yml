@@ -1,9 +1,9 @@
-name: Trend Writer — Daily Tech Insight Post
+name: Trend Writer — Hourly Tech Insight Post
 
 on:
   schedule:
-    # KST 09:00 = UTC 00:00
-    - cron: '0 0 * * *'
+    # Every hour at minute 0 (UTC)
+    - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
