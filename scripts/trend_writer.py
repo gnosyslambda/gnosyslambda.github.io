@@ -499,8 +499,8 @@ def main():
     # 모델을 역할에 따라 분리
     # - Flash: 기사 선정, 메타데이터 생성 등 빠른 작업
     # - Pro: 최종 포스트 생성 등 고품질 분석 작업
-    flash_model_name = "gemini-2.0-flash"
-    pro_model_name = "gemini-2.5-pro-preview-03-25"
+    flash_model_name = "gemini-3-flash-preview"
+    pro_model_name = "gemini-3-flash-preview"
 
     # 1. 이미 처리한 기사 로드
     seen = load_seen()
