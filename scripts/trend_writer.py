@@ -42,7 +42,7 @@ POSTS_DIR = REPO_ROOT / "content" / "posts"
 SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-FETCH_WINDOW_HOURS = 48          # 최근 N시간 기사 수집 (여유 있게 48h)
+FETCH_WINDOW_HOURS = 168         # 최근 N시간 기사 수집 (7일 — 블로그 발행 빈도가 낮아 7일 필요)
 MAX_ARTICLES_TO_SCORE = 15       # LLM 혁신도 평가 최대 기사 수
 MAX_BODY_CHARS = 10000           # 본문 최대 글자 수 (토큰 절약)
 HTTP_TIMEOUT = 15                # 요청 타임아웃(초)
@@ -145,8 +145,8 @@ def load_seen() -> set[str]:
 
 def save_seen(seen: set[str]) -> None:
     with open(SEEN_CACHE, "w", encoding="utf-8") as f:
-        # 최근 200개만 유지
-        json.dump(list(seen)[-200:], f)
+        # 최근 500개만 유지
+        json.dump(list(seen)[-500:], f)
 
 
 # ─────────────────────────────────────────────
@@ -510,8 +510,8 @@ def main():
     articles = fetch_recent_articles(feeds)
 
     if not articles:
-        log.warning("⚠️  최근 기사를 찾지 못했습니다. 윈도우를 72시간으로 확장합니다.")
-        articles = fetch_recent_articles(feeds, hours=72)
+        log.warning("⚠️  최근 기사를 찾지 못했습니다. 윈도우를 14일로 확장합니다.")
+        articles = fetch_recent_articles(feeds, hours=336)
 
     # 3. 이미 작성된 기사 제외
     fresh = [a for a in articles if a["uid"] not in seen]
