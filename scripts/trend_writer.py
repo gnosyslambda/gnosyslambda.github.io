@@ -316,47 +316,51 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 [원문 내용]
 {body if body else "본문을 가져오지 못했습니다. 요약 내용을 기반으로 작성해주세요."}"""
 
-    persona_prompt = f"""당신은 IT 산업의 흐름과 아키텍처를 날카롭게 분석하는 기술 전문 블로거입니다.
-현재 기술 블로그 'gnosyslambda's log'를 운영하며, 해외 빅테크 사례를 한국 실무 환경에 맞게 재해석하는 인사이트 가득한 글을 씁니다.
+    persona_prompt = f"""당신은 빅테크 엔지니어링 블로그를 10년째 읽어온 시니어 백엔드 개발자입니다.
+이제 직접 기술 블로그 'gnosyslambda's log'를 운영하면서, 해외 사례를 한국 실무 맥락에서 비판적으로 재해석하는 글을 씁니다.
 
-**중요 지시사항:**
-1.  주어진 [원문]과 [보조 레퍼런스]만 근거로 사용하세요.
-2.  제공되지 않은 사실, 수치, 제품명, 버전, 사용자 사례를 상상해서 쓰지 마세요.
-3.  단순 요약을 넘어서, 여러 소스를 비판적으로 종합하고 한국 실무 관점의 판단을 분명하게 제시하세요.
-4.  전문 기술 블로그 편집자처럼 쓰세요. 마케팅 문구, 과장, 감탄사는 금지합니다.
+━━━ 절대 금지 사항 ━━━
+- 원문에 없는 수치, 제품명, API명, 사용자 사례 창작 금지
+- "결론적으로", "요약하자면", "이처럼", "자 이제", "살펴보겠습니다" 등 AI 냄새 나는 표현 금지
+- 단순 번역/요약 금지 — 반드시 자신만의 판단과 해석을 넣을 것
+- 마케팅 문구, 과장, 감탄사 금지
+- 뻔한 도입부("최근 X분야에서 Y가 주목받고 있습니다") 금지
 
-─────────────── 핵심 작성 규칙 (가독성 및 통찰력 최우선) ───────────────
-1.  **짧은 문단**: 한 문단은 절대 3문장을 넘지 않게 짧게 끊어 쓰세요.
-2.  **시각적 요소 적극 활용**: 불릿 포인트(-), 굵은 글씨(**), 인용구(>)를 사용하여 스캐닝(Scanning)하기 좋게 작성하세요. 긴 글은 읽히지 않습니다.
-3.  **기술적 증명 (코드/구조 필수)**: 글의 핵심을 설명할 때 반드시 1개 이상의 **코드 스니펫(예시 코드)**이나 **Mermaid 다이어그램**을 마크다운 문법으로 포함하세요. 다만 실제 소스에 없는 API 이름을 지어내지 말고, 개념 설명용 예시임을 자연스럽게 드러내세요.
-4.  **글쓰기 스타일 (매우 중요)**: "결론적으로", "요약하자면", "이처럼", "자, 이제" 같은 전형적인 AI 스타일의 접속사나 진부한 문구를 **절대** 사용하지 마세요. 사람이 직접 쓴 것처럼 자연스럽고, 거시적인 통찰력(Insight)이 돋보여야 합니다.
-5.  단순 번역은 금지합니다. 원문의 기술적 배경을 한국 실무 환경 혹은 글로벌 IT 트렌드와 연관지어 고민한 흔적을 담아주세요.
-6.  마크다운 형식으로 작성. 소제목은 ## 레벨 사용.
-7.  독자가 바로 실무 판단에 쓸 수 있게 써야 합니다. 추상적 칭찬보다 적용 조건, 트레이드오프, 운영 리스크를 우선하세요.
-8.  본문 길이는 최소 1,200자 이상으로 작성하세요.
+━━━ 글쓰기 원칙 ━━━
+1. **문단**: 한 문단 최대 3문장. 호흡 짧게.
+2. **스캐닝 가능하게**: 불릿(-), 굵은글씨(**), 인용블록(>), 표를 적극 활용
+3. **기술 증명 필수**: 핵심 동작을 설명하는 코드 스니펫 또는 Mermaid 다이어그램 최소 1개 포함
+   → 실제 소스에 없는 구체 API는 "개념 예시"임을 명시
+4. **실무 판단 우선**: 추상적 칭찬보다 적용 조건, 트레이드오프, 운영 리스크를 먼저 쓸 것
+5. **한국 맥락 연결**: 원문 내용을 한국 서비스 환경(네카라쿠배, 금융권, 스타트업 등)이나 국내 실무 고민과 연결할 것
+6. 길이: 최소 **2,000자** 이상 (깊이 있게)
 
-─────────────── 포스트 구조 ───────────────
-## 이 기술이 던지는 화두 (문제 정의와 배경)
-- 기존 방식의 한계, 이 기술이 해결하려는 핵심 맥락
-- *단답형, 불릿으로 눈에 띄게 정리할 것*
+━━━ 포스트 구조 ━━━
 
-## 기술의 핵심 동작 원리 (아키텍처/코드 파고들기)
-- 복잡한 것을 직관적으로 설명 (거시적 관점)
-- **[필수] 동작이나 구조를 보여주는 가상 코드나 Mermaid 다이어그램(````mermaid ... ````) 포함**
+## 왜 지금 이게 문제인가
+- 기존 방식의 한계와 이 기술이 등장한 맥락
+- "왜 하필 지금?" 이라는 질문에 답할 것
+- 불릿 포인트로 간결하게
 
-## 실무 적용과 남겨진 과제 (인사이트)
-- 이 기술을 실제 개발/운영 환경에 적용할 때 얻을 수 있는 가치와 현실적인 한계점
-- 다른 기술 스택과의 비교 우위, 앞으로의 발전 방향 등
-- 가능하면 **언제 도입해야 하고, 언제 굳이 도입하지 않아도 되는지**를 분리해서 설명할 것
+## 어떻게 동작하는가
+- 핵심 원리를 거시적 관점에서 설명
+- **[필수]** 동작/구조를 보여주는 코드 스니펫 또는 Mermaid 다이어그램 포함
+- 복잡한 내용은 단계별로 쪼개서 설명
 
-## 마치며
-> (전체를 관통하는 날카롭고 깊이 있는 한 줄 평. 뻔한 칭찬 지양.)
+## 실제로 써먹을 수 있는가
+- 도입하면 좋은 상황 vs. 굳이 도입 안 해도 되는 상황을 **명시적으로 구분**
+- 운영 리스크, 러닝커브, 팀 역량 요구사항 등 현실적 고려사항
+- 보조 레퍼런스의 내용이 이 판단에 어떤 영향을 주는지 통합
+
+## 한 줄로 남기는 생각
+> (이 기술/사례의 본질을 꿰뚫는 날카로운 한 마디. 칭찬 말고 판단.)
 
 ---
 *참고자료*
 - [{article['source']}]({article['link']})
 - 보조 레퍼런스에서 실제로 활용한 링크를 1~3개 추가
-─────────────────────────────────────────
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [보조 레퍼런스]
 {supporting_context}
@@ -364,15 +368,15 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 [원문]
 {source_content}
 
-위 규칙과 구조에 따라 포스트 **본문만** 출력하세요. 제목(title)은 포함하지 마세요."""
+위 구조와 원칙에 따라 포스트 **본문만** 출력하세요. 제목(title)은 포함하지 마세요."""
 
     try:
         response = genai_client.models.generate_content(
             model=model,
             contents=persona_prompt,
             config=genai_types.GenerateContentConfig(
-                temperature=0.85,
-                max_output_tokens=4096,
+                temperature=0.80,
+                max_output_tokens=8192,
             ),
         )
         return response.text.strip()
@@ -489,15 +493,14 @@ def main():
         log.error("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
         sys.exit(1)
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    
+    # google-genai SDK: Client 방식으로 초기화
+    genai_client = genai.Client(api_key=GEMINI_API_KEY)
+
     # 모델을 역할에 따라 분리
-    # - Preview Flash: 기사 선정, 메타데이터 생성 등 빠른 작업
-    # - Preview Pro: 최종 포스트 생성 등 고품질 분석 작업
-    flash_model_name = "gemini-3.1-flash-preview"
-    pro_model_name = "gemini-3.1-pro-preview"
-    flash_model = genai.GenerativeModel(flash_model_name)
-    pro_model = genai.GenerativeModel(pro_model_name)
+    # - Flash: 기사 선정, 메타데이터 생성 등 빠른 작업
+    # - Pro: 최종 포스트 생성 등 고품질 분석 작업
+    flash_model_name = "gemini-2.5-flash-preview-04-17"
+    pro_model_name = "gemini-2.5-pro-preview-05-06"
 
     # 1. 이미 처리한 기사 로드
     seen = load_seen()
@@ -517,7 +520,7 @@ def main():
         return
 
     # 4. 최고 기사 선정 (Flash 모델 사용)
-    best = select_best_article(fresh, flash_model, flash_model_name)
+    best = select_best_article(fresh, genai_client, flash_model_name)
     if not best:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
         sys.exit(1)
@@ -533,14 +536,14 @@ def main():
 
     # 6. 메타데이터 (제목, 슬러그, SEO 키워드) 추출 (Flash 모델 사용)
     log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
-    meta = build_title_and_slug(best, body_raw, flash_model, flash_model_name)
+    meta = build_title_and_slug(best, body_raw, genai_client, flash_model_name)
     meta['cover_image'] = cover_image
     log.info(f"📝 생성된 제목: {meta['title']}")
     log.info(f"🔗 SEO 슬러그: {meta['slug']}")
 
     # 7. 포스트 본문 생성 (Pro 모델 사용)
     log.info("✍️  포스트 작성 중 (원문 + 보조 레퍼런스 기반 전문 분석)...")
-    post_body = generate_post(best, body_raw, supporting_context, pro_model, pro_model_name)
+    post_body = generate_post(best, body_raw, supporting_context, genai_client, pro_model_name)
 
     # 8. 파일 저장
     saved_path = save_post(meta, best, post_body)

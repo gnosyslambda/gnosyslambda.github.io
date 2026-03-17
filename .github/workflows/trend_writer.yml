@@ -2,8 +2,8 @@ name: Trend Writer — Hourly Tech Insight Post
 
 on:
   schedule:
-    # Every hour at minute 0 (UTC)
-    - cron: '0 * * * *'
+    # Every 3 hours at minute 0 (UTC) → KST 기준 0, 3, 6, 9, 12, 15, 18, 21시
+    - cron: '0 */3 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -97,7 +97,7 @@ jobs:
           git commit -m "feat: 글로벌 기술 인사이트 포스트 발행 (${KST_DATE})
 
           - 파일: ${FILENAME}
-          - 자동 생성: trend_writer.py + Gemini 1.5 Flash
+          - 자동 생성: trend_writer.py + Gemini 2.5 Pro
           - 14년 차 백엔드 개발자 페르소나 기반 한국어 재해석"
           
           git push origin main
