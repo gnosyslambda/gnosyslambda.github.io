@@ -408,8 +408,9 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 - 핵심 메시지를 간결하게 마무리
 - 독자가 당장 해볼 수 있는 것, 생각해볼 것 한 가지
 
----
-*원문: [{article['title']}]({article['link']}) — {article['source']}*
+## 참고 자료
+- [원문] [{article['title']}]({article['link']}) — {article['source']}
+- 보조 레퍼런스에서 실제로 활용한 링크를 `- [관련] 제목 — 출처` 형식으로 추가 (활용하지 않았으면 생략)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
