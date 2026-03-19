@@ -77,7 +77,7 @@ params:
     hiddenInSingle: false
 
   editPost:
-    URL: "https://github.com/gnosyslambda/gnosyslambda.github.io/content"
+    URL: "https://github.com/gnosyslambda/gnosyslambda.github.io/edit/main"
     Text: "Suggest Changes"
     appendFilePath: true
 
