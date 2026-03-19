@@ -73,7 +73,7 @@ Kubernetes 오케스트레이션, CI/CD 파이프라인 자동화, 클라우드 
 
 | Domain | Technologies |
 |:-------|:-------------|
-| **Languages** | Kotlin · Java · TypeScript · Python |
+| **Languages** | Kotlin · Java · TypeScript · Python · Go · Rust · C++ · Swift |
 | **Backend** | Spring Boot · NestJS · FastAPI · GraphQL |
 | **Mobile** | Android (Kotlin/Java) · Jetpack Compose |
 | **Data** | PostgreSQL · Redis · Kafka · Elasticsearch |
