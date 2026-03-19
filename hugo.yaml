@@ -17,7 +17,7 @@ minify:
 params:
   env: production
   title: "gnosyslambda's log"
-  description: "개발자 + AI 테크 블로그. 코드, 아키텍처, AI 도구에 대한 기록."
+  description: "Backend Engineering & AI 인사이트. 시스템 설계, 아키텍처, AI 도구에 대한 깊이 있는 기록."
   keywords: [developer, AI, tech, blog, golang, typescript, LLM]
   author: gnosyslambda
   images: ["/images/og-image.png"]
@@ -56,11 +56,11 @@ params:
 
   profileMode:
     enabled: true
-    title: "gnosyslambda's log"
-    subtitle: "개발자 + AI 테크 블로그 🚀\n코드, 아키텍처, AI 도구에 대한 실전 기록"
+    title: "gnosyslambda"
+    subtitle: "Backend Engineer · AI Explorer\n기술의 깊이와 실전 경험을 기록합니다"
     imageUrl: "https://github.com/gnosyslambda.png"
-    imageWidth: 120
-    imageHeight: 120
+    imageWidth: 140
+    imageHeight: 140
     imageTitle: gnosyslambda
     buttons:
       - name: Posts
@@ -69,8 +69,8 @@ params:
         url: about
 
   homeInfoParams:
-    Title: "gnosyslambda's log 🚀"
-    Content: "개발자 + AI 테크 블로그입니다. 코드, 아키텍처, AI 도구에 대한 실전 기록을 남깁니다."
+    Title: "gnosyslambda"
+    Content: "Backend Engineering & AI 인사이트. 시스템의 깊이와 실전 경험을 기록합니다."
 
   socialIcons:
     - name: github
