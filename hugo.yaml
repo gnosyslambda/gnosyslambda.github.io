@@ -76,11 +76,6 @@ params:
     hiddenInList: false
     hiddenInSingle: false
 
-  editPost:
-    URL: "https://github.com/gnosyslambda/gnosyslambda.github.io/edit/main"
-    Text: "Suggest Changes"
-    appendFilePath: true
-
   fuseOpts:
     isCaseSensitive: false
     shouldSort: true
