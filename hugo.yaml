@@ -2,6 +2,7 @@ baseURL: "https://gnosyslambda.github.io/"
 languageCode: ko-KR
 title: "gnosyslambda's log"
 theme: PaperMod
+googleAnalytics: "G-D52V7VW49P"
 paginate: 10
 
 enableRobotsTXT: true
@@ -79,7 +80,7 @@ params:
 
   analytics:
     google:
-      SiteVerificationTag: ""
+      SiteVerificationTag: "D52V7VW49P"
 
   cover:
     hidden: false
