@@ -1,5 +1,5 @@
 ---
-date: '2025-08-18T19:15:00+09:00'
+date: '2025-10-08T19:15:00+09:00'
 draft: false
 title: 'Cloudflare가 인터넷의 20%를 Rust로 다시 쓴 이유'
 tags:

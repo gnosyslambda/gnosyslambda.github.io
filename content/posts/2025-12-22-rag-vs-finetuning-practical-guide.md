@@ -1,5 +1,5 @@
 ---
-date: '2026-02-12T20:15:00+09:00'
+date: '2025-12-22T20:15:00+09:00'
 draft: false
 title: 'RAG vs Fine-tuning: 프로덕션 LLM에서 둘 중 뭘 써야 하는가 — 실전 의사결정 프레임워크'
 tags:
