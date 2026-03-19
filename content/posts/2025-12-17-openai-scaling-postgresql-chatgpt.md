@@ -1,5 +1,5 @@
 ---
-date: '2026-03-19T10:00:00+09:00'
+date: '2025-12-17T23:20:00+09:00'
 draft: false
 title: 'OpenAI는 어떻게 PostgreSQL 하나로 8억 사용자를 감당하는가'
 tags:

@@ -1,5 +1,5 @@
 ---
-date: '2026-03-19T13:00:00+09:00'
+date: '2025-07-22T20:30:00+09:00'
 draft: false
 title: 'kube-scheduler의 속을 열어보면: 당신의 Pod는 어떻게 그 노드에 배치됐는가'
 tags:
