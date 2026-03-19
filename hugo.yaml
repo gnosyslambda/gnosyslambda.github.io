@@ -55,22 +55,11 @@ params:
     iconHeight: 35
 
   profileMode:
-    enabled: true
-    title: "gnosyslambda"
-    subtitle: "Backend Engineer · AI Explorer\n기술의 깊이와 실전 경험을 기록합니다"
-    imageUrl: "https://github.com/gnosyslambda.png"
-    imageWidth: 140
-    imageHeight: 140
-    imageTitle: gnosyslambda
-    buttons:
-      - name: Posts
-        url: posts
-      - name: About
-        url: about
+    enabled: false
 
   homeInfoParams:
     Title: "gnosyslambda"
-    Content: "Backend Engineering & AI 인사이트. 시스템의 깊이와 실전 경험을 기록합니다."
+    Content: "Backend Engineer · AI Explorer — 대규모 시스템 설계, AI 엔지니어링, 오픈소스 생태계에 대한 깊이 있는 기술 인사이트를 기록합니다."
 
   socialIcons:
     - name: github
