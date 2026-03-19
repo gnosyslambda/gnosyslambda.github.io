@@ -534,6 +534,25 @@ TocOpen: true
 POST_COOLDOWN_MINUTES = 55   # 이 시간 이내에 이미 포스트가 생성됐으면 스킵
 
 
+def _check_cooldown() -> None:
+    """최근 커밋 중 content/posts/ 변경이 55분 이내에 있으면 스킵."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", "--since", f"{POST_COOLDOWN_MINUTES} minutes ago",
+             "--", "content/posts/"],
+            capture_output=True, text=True, cwd=REPO_ROOT
+        )
+        recent_commits = result.stdout.strip()
+        if recent_commits:
+            log.info(f"⏭️  최근 {POST_COOLDOWN_MINUTES}분 이내 포스트 커밋 존재 — 이번 실행은 건너뜁니다.")
+            log.info(f"   커밋: {recent_commits.splitlines()[0]}")
+            sys.exit(0)
+        log.info(f"⏱️  {POST_COOLDOWN_MINUTES}분 이내 포스트 없음 — 새 포스트 생성 시작")
+    except Exception as e:
+        log.warning(f"쿨다운 체크 실패 (무시하고 계속): {e}")
+
+
 def main():
     if not GEMINI_API_KEY:
         log.error("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
@@ -544,15 +563,9 @@ def main():
     flash_model_name = "gemini-3-flash-preview"
     pro_model_name = "gemini-3-flash-preview"
 
-    # 0. 쿨다운 체크: 최근 55분 이내 포스트가 이미 생성됐으면 스킵 (30분 스케줄 중복 방지)
-    posts = sorted(POSTS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if posts:
-        last_mtime = datetime.fromtimestamp(posts[0].stat().st_mtime, tz=timezone.utc)
-        elapsed_min = (datetime.now(tz=timezone.utc) - last_mtime).total_seconds() / 60
-        if elapsed_min < POST_COOLDOWN_MINUTES:
-            log.info(f"⏭️  최근 {int(elapsed_min)}분 전 포스트가 이미 생성됨 — 이번 실행은 건너뜁니다.")
-            sys.exit(0)
-        log.info(f"⏱️  마지막 포스트로부터 {int(elapsed_min)}분 경과 — 새 포스트 생성 시작")
+    # 0. 쿨다운 체크: 최근 55분 이내 포스트 커밋이 있으면 스킵 (30분 스케줄 중복 방지)
+    # 파일 mtime은 git checkout 시 현재 시각으로 재설정되므로 git log 기반으로 확인
+    _check_cooldown()
 
     # 1. seen 로드 (타임스탬프 기반, 만료된 항목 자동 제외)
     seen = load_seen()
