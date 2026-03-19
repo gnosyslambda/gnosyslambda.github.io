@@ -12,5 +12,4 @@ resources/
 # Python venv
 .venv/
 
-# Trend writer cache
-scripts/.seen_articles.json
+# Trend writer cache (tracked for GitHub Actions persistence)
