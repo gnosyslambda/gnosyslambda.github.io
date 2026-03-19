@@ -53,20 +53,27 @@
 {{- end }}
 
 <div class="recent-posts-section">
-  <h2 class="recent-posts-title">Recent Posts</h2>
-  <ul class="recent-posts-list">
-    {{- range first 5 $pages }}
-    <li class="recent-post-item">
-      <a href="{{ .Permalink }}">
-        <span class="recent-post-name">{{ .Title }}</span>
-        <span class="recent-post-date">{{ .Date.Format "Jan 2, 2006" }}</span>
-      </a>
-    </li>
+  <div class="recent-posts-header">
+    <h2 class="recent-posts-title">Recent Posts</h2>
+    <a href="{{ "posts/" | absURL }}" class="recent-posts-more">모든 글 보기 &rarr;</a>
+  </div>
+  <div class="recent-posts-grid">
+    {{- range first 6 $pages }}
+    <a href="{{ .Permalink }}" class="recent-post-card">
+      <div class="recent-post-meta">
+        {{- with .Params.categories }}
+        <span class="recent-post-category">{{ index . 0 }}</span>
+        {{- end }}
+        <span class="recent-post-date">{{ .Date.Format "2006.01.02" }}</span>
+      </div>
+      <h3 class="recent-post-name">{{ .Title }}</h3>
+      <p class="recent-post-desc">{{ .Description | truncate 80 }}</p>
+      <div class="recent-post-reading">
+        <span>{{ .ReadingTime }}min read</span>
+      </div>
+    </a>
     {{- end }}
-  </ul>
-  <a href="{{ "posts/" | absURL }}" class="recent-posts-more">
-    모든 글 보기 &rarr;
-  </a>
+  </div>
 </div>
 
 {{- else }}
