@@ -18,7 +18,7 @@ params:
   env: production
   title: "gnosyslambda's log"
   description: "Backend Engineering & AI 인사이트. 시스템 설계, 아키텍처, AI 도구에 대한 깊이 있는 기록."
-  keywords: [developer, AI, tech, blog, golang, typescript, LLM]
+  keywords: [developer, AI, tech, blog, kotlin, java, typescript, LLM]
   author: gnosyslambda
   images: ["/images/og-image.png"]
 

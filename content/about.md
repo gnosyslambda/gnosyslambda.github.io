@@ -73,13 +73,14 @@ Kubernetes 오케스트레이션, CI/CD 파이프라인 자동화, 클라우드 
 
 | Domain | Technologies |
 |:-------|:-------------|
-| **Languages** | Go · TypeScript · Python · Kotlin · Java |
-| **Backend** | gRPC · GraphQL · NestJS · FastAPI · Spring Boot |
+| **Languages** | Kotlin · Java · TypeScript · Python |
+| **Backend** | Spring Boot · NestJS · FastAPI · GraphQL |
+| **Mobile** | Android (Kotlin/Java) · Jetpack Compose |
 | **Data** | PostgreSQL · Redis · Kafka · Elasticsearch |
-| **Infrastructure** | Kubernetes · Docker · Terraform · GitHub Actions |
+| **Infrastructure** | Kubernetes · Docker · GitHub Actions |
 | **Cloud** | AWS · GCP · OCI |
-| **AI/ML** | Claude API · OpenAI API · LangChain · Ray · pgvector |
-| **Monitoring** | Prometheus · Grafana · OpenTelemetry · Datadog |
+| **AI/ML** | Claude API · OpenAI API · LangChain · pgvector |
+| **Monitoring** | Grafana · Datadog · OpenTelemetry |
 
 ---
 
