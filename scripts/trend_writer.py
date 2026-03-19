@@ -577,9 +577,9 @@ def main():
     flash_model_name = "gemini-3-flash-preview"
     pro_model_name = "gemini-3-flash-preview"
 
-    # 0. 쿨다운 체크: 최근 55분 이내 포스트 커밋이 있으면 스킵 (30분 스케줄 중복 방지)
-    # 파일 mtime은 git checkout 시 현재 시각으로 재설정되므로 git log 기반으로 확인
-    _check_cooldown()
+    # 0. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
+    if not os.environ.get("FORCE_RUN"):
+        _check_cooldown()
 
     # 1. seen 로드 (타임스탬프 기반, 만료된 항목 자동 제외)
     seen = load_seen()
