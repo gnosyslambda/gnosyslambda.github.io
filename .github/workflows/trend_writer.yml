@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: "trend-writer"
@@ -102,7 +103,16 @@ jobs:
           
           git push origin main
 
-      # ── 7. 결과 요약 ─────────────────────────────
+      # ── 7. 배포 워크플로우 트리거 ────────────────
+      - name: Trigger deploy workflow
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy.yml --repo ${{ github.repository }}
+          echo "🚀 deploy.yml 트리거 완료"
+
+      # ── 8. 결과 요약 ─────────────────────────────
       - name: Summary
         run: |
           echo "## ✅ Trend Writer 완료" >> "$GITHUB_STEP_SUMMARY"
