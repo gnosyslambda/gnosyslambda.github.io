@@ -208,14 +208,15 @@ def select_best_article(articles: list[dict], genai_client, model: str) -> dict 
         for i, a in enumerate(candidates)
     )
 
-    prompt = f"""당신은 Java/Kotlin 기반 백엔드 시스템을 14년간 운영한 시니어 개발자입니다.
+    prompt = f"""당신은 기술 블로그 SEO 전략가이자 Java/Kotlin 백엔드 시니어 개발자입니다.
 아래 해외 테크 블로그 기사 목록을 검토하고, 다음 기준에 따라 **가장 가치 있는 기사 1개**를 선정해주세요.
 
-선정 기준:
-1. 기술적 혁신성 (새로운 아키텍처, 패턴, 접근법)
-2. 실무 적용 가능성 (Java/Kotlin, Spring Boot, JVM 환경)
-3. 스케일 및 신뢰성 문제 해결 사례
-4. 백엔드 개발자에게 인사이트를 주는 내용
+선정 기준 (우선순위 순):
+1. **SEO 검색 수요**: 한국 개발자들이 구글/네이버에서 자주 검색하는 키워드와 연관된 주제
+   - 예: "MSA", "쿠버네티스", "AI 개발", "성능 최적화", "보안", "데이터베이스", "캐싱", "CI/CD"
+2. **실용적 깊이**: 개념 소개가 아닌 실제 구현/운영 사례가 있는 글
+3. **기술적 혁신성**: 새로운 아키텍처, 패턴, 접근법
+4. **백엔드 실무 관련성**: Java/Kotlin, Spring Boot, JVM 환경 적용 가능
 
 기사 목록:
 {bullets}
@@ -223,7 +224,8 @@ def select_best_article(articles: list[dict], genai_client, model: str) -> dict 
 응답 형식 (JSON만 출력, 다른 텍스트 없이):
 {{
   "selected_index": 1,
-  "reason": "선정 이유 (한국어, 2-3문장)"
+  "reason": "선정 이유 (한국어, 2-3문장)",
+  "seo_keywords": ["검색될만한 핵심 키워드1", "키워드2", "키워드3"]
 }}"""
 
     try:
@@ -369,6 +371,11 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 - 근거 없는 수치·사례 창작
 - 원문에도 없고 실제 경험도 아닌 내용을 마치 경험한 것처럼 쓰는 것
 
+━━━ SEO 최적화 ━━━
+- 핵심 키워드를 본문 앞부분(첫 200자 이내)에 자연스럽게 포함
+- H2/H3 소제목에 검색 키워드가 포함되도록 작성
+- 독자가 실제로 검색할 법한 질문("왜 X를 써야 할까?", "X vs Y 차이점") 형식의 소제목 활용
+
 ━━━ 글쓰기 스타일 ━━━
 - 문단 호흡 짧게 (한 문단 3문장 이내)
 - 불릿(-), **굵은 글씨**, 인용블록(>), 표 적극 활용
@@ -429,22 +436,29 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 # 6. Hugo frontmatter + 파일 저장
 # ─────────────────────────────────────────────
 def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> dict:
-    prompt = f"""아래 해외 기술 블로그 원문을 기반으로 다음 4가지를 JSON 형식으로 추출해주세요.
+    prompt = f"""아래 해외 기술 블로그 원문을 기반으로 다음 4가지를 JSON 형식으로 생성해주세요.
+**목표: 한국 개발자가 구글/네이버 검색 시 상위 노출될 수 있도록 SEO를 최우선으로 고려하세요.**
 
-1. **title**: 원문 제목을 자연스러운 한국어로 번역한 제목 (최대 40자, 기술적 핵심이 드러나게, 과장 없이)
-2. **slug**: URL에 사용할 영문 SEO 슬러그 (소문자, 알파벳과 하이픈만 포함, 3~6단어 길이의 핵심 키워드 압축)
-3. **keywords**: 구글 검색 노출을 위한 SEO 최적화된 핵심 기술 키워드 (영문/한글 혼합 가능, 5~7개)
-4. **description**: 원문의 핵심 내용을 한국어로 요약 (1~2문장, "[출처명] 번역" 형태 포함)
+1. **title**: 검색 노출에 최적화된 한국어 제목
+   - 개발자가 실제로 검색할 법한 핵심 키워드를 제목 앞쪽에 배치
+   - 최대 40자, 구체적이고 명확하게 (예: "쿠버네티스 스케줄러 동작 원리 완전 정리")
+2. **slug**: 검색 노출을 위한 영문 SEO 슬러그
+   - 소문자 + 하이픈만, 3~6단어, 핵심 기술 키워드 포함
+3. **keywords**: 이 글로 유입될 수 있는 검색 키워드 7~10개
+   - 한국어 검색어 + 영문 기술 용어 혼합
+   - 구체적인 롱테일 키워드 포함 (예: "쿠버네티스 파드 스케줄링", "kubernetes scheduler 동작")
+4. **description**: 검색 결과 스니펫에 노출될 메타 설명 (1~2문장, 160자 이내)
+   - 핵심 키워드 자연스럽게 포함, 클릭을 유도하는 문장
 
 기사 제목: {article['title']}
 기사 요약: {article['summary'][:300]}
 
 응답 형식 (오직 JSON만 출력):
 {{
-  "title": "한국어 제목",
-  "slug": "english-seo-friendly-slug",
-  "keywords": ["키워드1", "keyword2"],
-  "description": "이 글은 ..."
+  "title": "SEO 최적화된 한국어 제목",
+  "slug": "seo-optimized-slug",
+  "keywords": ["한국어키워드1", "keyword2", "롱테일 키워드3"],
+  "description": "검색 스니펫용 설명..."
 }}"""
     try:
         response = genai_client.models.generate_content(model=model, contents=prompt)
