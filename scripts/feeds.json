@@ -65,6 +65,60 @@
       "url": "https://feeds.feedburner.com/geeknews",
       "category": "tech-news",
       "tags": ["geeknews", "tech-news", "startup", "development"]
+    },
+    {
+      "name": "Shopify Engineering",
+      "url": "https://shopify.engineering/blog.atom",
+      "category": "ecommerce-infra",
+      "tags": ["shopify", "ecommerce", "ruby", "scalability", "platform"]
+    },
+    {
+      "name": "Stripe Blog",
+      "url": "https://stripe.com/blog/feed/rss",
+      "category": "fintech-infra",
+      "tags": ["stripe", "payments", "api-design", "reliability", "fintech"]
+    },
+    {
+      "name": "Discord Blog",
+      "url": "https://discord.com/blog/rss.xml",
+      "category": "realtime-communication",
+      "tags": ["discord", "real-time", "websocket", "rust", "scalability"]
+    },
+    {
+      "name": "Spotify Engineering",
+      "url": "https://engineering.atspotify.com/feed/",
+      "category": "streaming-infra",
+      "tags": ["spotify", "microservices", "data-engineering", "ml", "backend"]
+    },
+    {
+      "name": "Pinterest Engineering",
+      "url": "https://medium.com/feed/pinterest-engineering",
+      "category": "social-platform",
+      "tags": ["pinterest", "recommendation", "ml", "ads", "scalability"]
+    },
+    {
+      "name": "Stack Overflow Blog",
+      "url": "https://stackoverflow.blog/feed/",
+      "category": "developer-community",
+      "tags": ["stackoverflow", "developer-survey", "ai", "engineering-culture"]
+    },
+    {
+      "name": "Slack Engineering",
+      "url": "https://slack.engineering/feed/",
+      "category": "enterprise-collab",
+      "tags": ["slack", "real-time", "websocket", "distributed-systems", "java"]
+    },
+    {
+      "name": "Twitter Engineering",
+      "url": "https://blog.twitter.com/engineering/en_us/topics/infrastructure.rss",
+      "category": "social-platform",
+      "tags": ["twitter", "x", "real-time", "distributed-systems", "scala"]
+    },
+    {
+      "name": "Dropbox Tech",
+      "url": "https://dropbox.tech/feed",
+      "category": "cloud-storage",
+      "tags": ["dropbox", "storage", "sync", "reliability", "python"]
     }
   ]
 }

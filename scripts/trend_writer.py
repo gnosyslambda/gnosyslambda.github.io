@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import json
+import random
 import logging
 import hashlib
 from pathlib import Path
@@ -42,12 +43,13 @@ POSTS_DIR = REPO_ROOT / "content" / "posts"
 SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-FETCH_WINDOW_HOURS = 168         # 최근 N시간 기사 수집 (7일 — 블로그 발행 빈도가 낮아 7일 필요)
-MAX_ARTICLES_TO_SCORE = 15       # LLM 혁신도 평가 최대 기사 수
+FETCH_WINDOW_HOURS = 336         # 최근 14일 기사 수집 (빅테크 블로그 발행 빈도 고려)
+MAX_ARTICLES_TO_SCORE = 20       # LLM 혁신도 평가 최대 기사 수
 MAX_BODY_CHARS = 10000           # 본문 최대 글자 수 (토큰 절약)
 HTTP_TIMEOUT = 15                # 요청 타임아웃(초)
 MAX_SUPPORTING_ARTICLES = 3      # 보조 레퍼런스로 붙일 추가 글 수
 MAX_SUPPORTING_BODY_CHARS = 2500 # 보조 글 본문 최대 길이
+SEEN_EXPIRE_DAYS = 60            # seen 항목 만료 기간 (60일 후 재선정 가능)
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -99,6 +101,8 @@ def fetch_recent_articles(feeds: list[dict], hours: int = FETCH_WINDOW_HOURS) ->
             if article["title"] and article["link"]:
                 articles.append(article)
 
+    # 셔플로 항상 같은 기사가 상위에 오는 문제 방지
+    random.shuffle(articles)
     log.info(f"✅ 총 {len(articles)}개 기사 수집 완료")
     return articles
 
@@ -134,19 +138,60 @@ def _tokenize_korean_english(text: str) -> set[str]:
 
 
 # ─────────────────────────────────────────────
-# 2. 중복 기사 필터링
+# 2. seen 캐시 관리 (타임스탬프 기반, 60일 만료)
 # ─────────────────────────────────────────────
 def load_seen() -> set[str]:
-    if SEEN_CACHE.exists():
-        with open(SEEN_CACHE, encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+    """seen_articles.json에서 만료되지 않은 uid set을 반환한다.
+
+    포맷: {"uid": "ISO timestamp"} — 60일 이상 된 항목은 자동 제외.
+    하위 호환: 구버전 list 포맷도 지원.
+    """
+    if not SEEN_CACHE.exists():
+        return set()
+
+    data = json.loads(SEEN_CACHE.read_text(encoding="utf-8"))
+
+    # 구버전 포맷 (list of uid strings)
+    if isinstance(data, list):
+        log.info("⚙️  seen_articles.json 구버전 포맷 감지 → 신버전으로 마이그레이션")
+        now_ts = datetime.now(tz=timezone.utc).isoformat()
+        data = {u: now_ts for u in data}
+        SEEN_CACHE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    # 만료 필터링
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=SEEN_EXPIRE_DAYS)
+    active = {
+        uid for uid, ts in data.items()
+        if _parse_ts(ts) > cutoff
+    }
+    expired = len(data) - len(active)
+    if expired:
+        log.info(f"🗑️  만료된 seen 항목 {expired}개 제외")
+    log.info(f"📋 seen 항목 수: {len(active)}개 (유효)")
+    return active
 
 
 def save_seen(seen: set[str]) -> None:
-    with open(SEEN_CACHE, "w", encoding="utf-8") as f:
-        # 최근 500개만 유지
-        json.dump(list(seen)[-500:], f)
+    """seen set을 {uid: timestamp} dict로 저장. 기존 타임스탬프 보존."""
+    existing: dict[str, str] = {}
+    if SEEN_CACHE.exists():
+        data = json.loads(SEEN_CACHE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            existing = data
+
+    now_ts = datetime.now(tz=timezone.utc).isoformat()
+    result = {uid: existing.get(uid, now_ts) for uid in seen}
+    SEEN_CACHE.write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+
+def _parse_ts(ts: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
 # ─────────────────────────────────────────────
@@ -156,7 +201,7 @@ def select_best_article(articles: list[dict], genai_client, model: str) -> dict 
     if not articles:
         return None
 
-    # 점수 매길 기사 샘플링
+    # 랜덤 셔플 후 상위 N개만 평가 (항상 같은 기사 반복 방지)
     candidates = articles[:MAX_ARTICLES_TO_SCORE]
     bullets = "\n".join(
         f"{i+1}. [{a['source']}] {a['title']}\n   요약: {a['summary'][:200]}"
@@ -187,7 +232,6 @@ def select_best_article(articles: list[dict], genai_client, model: str) -> dict 
             contents=prompt,
         )
         raw = response.text.strip()
-        # JSON 블록 추출
         json_match = re.search(r"\{.*\}", raw, re.DOTALL)
         if not json_match:
             log.warning("LLM 응답에서 JSON을 찾지 못했습니다.")
@@ -213,14 +257,11 @@ def fetch_article_body(url: str) -> tuple[str, str]:
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
 
-        # 본문 추출 전 이미지/메타데이터 추출
         cover_image = _extract_cover_image(soup)
 
-        # 불필요한 요소 제거
         for tag in soup(["script", "style", "nav", "footer", "header", "aside", "ads"]):
             tag.decompose()
 
-        # 본문 후보 태그 순서대로 시도
         for selector in ["article", "main", ".post-content", ".entry-content", "body"]:
             container = soup.select_one(selector)
             if container:
@@ -228,7 +269,6 @@ def fetch_article_body(url: str) -> tuple[str, str]:
                 if len(text) > 500:
                     return text[:MAX_BODY_CHARS], cover_image
 
-        # fallback
         return re.sub(r"\s+", " ", soup.get_text()).strip()[:MAX_BODY_CHARS], cover_image
     except Exception as e:
         log.warning(f"본문 크롤링 실패 ({url}): {e}")
@@ -236,25 +276,23 @@ def fetch_article_body(url: str) -> tuple[str, str]:
 
 
 def _extract_cover_image(soup) -> str:
-    """원문 HTML에서 og:image 또는 첫 번째 적절한 이미지 URL을 추출합니다."""
     og_image = soup.find("meta", property="og:image")
     if og_image and og_image.get("content"):
         return og_image["content"]
-        
+
     twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
     if twitter_image and twitter_image.get("content"):
         return twitter_image["content"]
-        
+
     for img in soup.find_all("img"):
         src = img.get("src")
         if src and src.startswith("http") and not any(x in src.lower() for x in ["icon", "avatar", "logo", "pixel"]):
             return src
-            
+
     return ""
 
 
 def select_supporting_articles(primary: dict, articles: list[dict]) -> list[dict]:
-    """주제적으로 가까운 다른 블로그 글을 보조 레퍼런스로 고른다."""
     primary_tokens = _tokenize_korean_english(
         f"{primary['title']} {primary['summary']} {' '.join(primary.get('tags', []))}"
     )
@@ -307,7 +345,6 @@ def build_supporting_context(articles: list[dict]) -> str:
 # 5. Gemini: 페르소나 기반 한국어 포스트 생성
 # ─────────────────────────────────────────────
 def generate_post(article: dict, body: str, supporting_context: str, genai_client, model: str) -> str:
-    """해외 기술 블로그 원문을 고품질 한국어로 번역·재구성하여 포스트 생성."""
     source_content = f"""[원문 제목] {article['title']}
 [출처] {article['source']}
 [원문 URL] {article['link']}
@@ -396,7 +433,6 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 # 6. Hugo frontmatter + 파일 저장
 # ─────────────────────────────────────────────
 def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> dict:
-    """한국어 제목, 영문 SEO 슬러그, SEO 키워드를 한 번에 생성합니다."""
     prompt = f"""아래 해외 기술 블로그 원문을 기반으로 다음 4가지를 JSON 형식으로 추출해주세요.
 
 1. **title**: 원문 제목을 자연스러운 한국어로 번역한 제목 (최대 40자, 기술적 핵심이 드러나게, 과장 없이)
@@ -411,7 +447,7 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
 {{
   "title": "한국어 제목",
   "slug": "english-seo-friendly-slug",
-  "keywords": ["키워드1", "keyword2", ...],
+  "keywords": ["키워드1", "keyword2"],
   "description": "이 글은 ..."
 }}"""
     try:
@@ -423,7 +459,6 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
     except Exception as e:
         log.warning(f"메타데이터 생성 실패: {e}")
 
-    # Fallback
     return {
         "title": article["title"],
         "slug": "",
@@ -439,7 +474,6 @@ def build_tags(article: dict, new_keywords: list[str]) -> list[str]:
 
 
 def slugify(text: str) -> str:
-    """Fallback filename slug."""
     text = re.sub(r"[^\w\s-]", "", text.lower())
     text = re.sub(r"[\s_]+", "-", text)
     return text.strip("-")[:60]
@@ -452,15 +486,13 @@ def save_post(meta: dict, article: dict, body: str) -> Path:
     date_str = now_kst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
     date_prefix = now_kst.strftime("%Y-%m-%d")
 
-    # Use AI generated english slug, fallback to title slug
     title = meta["title"]
     slug = meta.get("slug") or slugify(title) or slugify(article["title"])
-    slug = slugify(slug)  # ensure safe characters
-    
+    slug = slugify(slug)
+
     filename = f"{date_prefix}-{slug}.md"
     filepath = POSTS_DIR / filename
 
-    # 겹치면 숫자 붙이기
     counter = 1
     while filepath.exists():
         filepath = POSTS_DIR / f"{date_prefix}-{slug}-{counter}.md"
@@ -499,38 +531,54 @@ TocOpen: true
 # ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
+POST_COOLDOWN_MINUTES = 55   # 이 시간 이내에 이미 포스트가 생성됐으면 스킵
+
+
 def main():
     if not GEMINI_API_KEY:
         log.error("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
         sys.exit(1)
 
-    # google-genai SDK: Client 방식으로 초기화
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # 모델을 역할에 따라 분리
-    # - Flash: 기사 선정, 메타데이터 생성 등 빠른 작업
-    # - Pro: 최종 포스트 생성 등 고품질 분석 작업
     flash_model_name = "gemini-3-flash-preview"
     pro_model_name = "gemini-3-flash-preview"
 
-    # 1. 이미 처리한 기사 로드
+    # 0. 쿨다운 체크: 최근 55분 이내 포스트가 이미 생성됐으면 스킵 (30분 스케줄 중복 방지)
+    posts = sorted(POSTS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if posts:
+        last_mtime = datetime.fromtimestamp(posts[0].stat().st_mtime, tz=timezone.utc)
+        elapsed_min = (datetime.now(tz=timezone.utc) - last_mtime).total_seconds() / 60
+        if elapsed_min < POST_COOLDOWN_MINUTES:
+            log.info(f"⏭️  최근 {int(elapsed_min)}분 전 포스트가 이미 생성됨 — 이번 실행은 건너뜁니다.")
+            sys.exit(0)
+        log.info(f"⏱️  마지막 포스트로부터 {int(elapsed_min)}분 경과 — 새 포스트 생성 시작")
+
+    # 1. seen 로드 (타임스탬프 기반, 만료된 항목 자동 제외)
     seen = load_seen()
 
-    # 2. RSS 수집
+    # 2. RSS 수집 (14일 윈도우)
     feeds = load_feeds()
     articles = fetch_recent_articles(feeds)
 
     if not articles:
-        log.warning("⚠️  최근 기사를 찾지 못했습니다. 윈도우를 14일로 확장합니다.")
-        articles = fetch_recent_articles(feeds, hours=336)
+        log.warning("⚠️  최근 기사를 찾지 못했습니다. 윈도우를 28일로 확장합니다.")
+        articles = fetch_recent_articles(feeds, hours=672)
 
-    # 3. 이미 작성된 기사 제외
+    # 3. 미처리 기사 필터링
     fresh = [a for a in articles if a["uid"] not in seen]
-    if not fresh:
-        log.info("이미 처리한 기사만 남아 있어 이번 실행은 건너뜁니다.")
-        return
+    log.info(f"📰 fresh 기사: {len(fresh)}개 / 전체: {len(articles)}개")
 
-    # 4. 최고 기사 선정 (Flash 모델 사용)
+    # fresh 소진 시: seen 초기화 후 전체 articles에서 재선정 (무조건 1개 생성 보장)
+    if not fresh:
+        log.warning("⚠️  처리할 새 기사가 없습니다. seen을 초기화하고 전체 기사에서 재선정합니다.")
+        seen.clear()
+        fresh = articles
+        if not fresh:
+            log.error("❌ RSS에서 수집된 기사가 없어 포스팅을 건너뜁니다.")
+            sys.exit(0)
+
+    # 4. 최고 기사 선정 (셔플된 후보 풀에서)
     best = select_best_article(fresh, genai_client, flash_model_name)
     if not best:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
@@ -545,14 +593,14 @@ def main():
     supporting_context = build_supporting_context(supporting_articles)
     log.info(f"📚 보조 레퍼런스 {len(supporting_articles)}건 확보")
 
-    # 6. 메타데이터 (제목, 슬러그, SEO 키워드) 추출 (Flash 모델 사용)
+    # 6. 메타데이터 생성
     log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
     meta = build_title_and_slug(best, body_raw, genai_client, flash_model_name)
     meta['cover_image'] = cover_image
     log.info(f"📝 생성된 제목: {meta['title']}")
     log.info(f"🔗 SEO 슬러그: {meta['slug']}")
 
-    # 7. 포스트 본문 생성 (Pro 모델 사용)
+    # 7. 포스트 본문 생성
     log.info("✍️  포스트 작성 중 (원문 + 보조 레퍼런스 기반 전문 분석)...")
     post_body = generate_post(best, body_raw, supporting_context, genai_client, pro_model_name)
 
@@ -564,7 +612,7 @@ def main():
     save_seen(seen)
 
     log.info(f"🎉 완료! 생성된 파일: {saved_path}")
-    print(f"CREATED_FILE={saved_path}")  # GitHub Actions에서 파싱용
+    print(f"CREATED_FILE={saved_path}")
 
 
 if __name__ == "__main__":
