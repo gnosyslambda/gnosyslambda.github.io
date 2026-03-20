@@ -1,5 +1,5 @@
 ---
-date: '2026-03-20T06:01:43+09:00'
+date: '2026-03-14T23:00:00+09:00'
 draft: false
 title: 'Cloudflare Workers AI Kimi K2.5 지원: AI 에이전트 최적화'
 tags:

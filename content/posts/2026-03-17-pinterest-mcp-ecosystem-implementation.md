@@ -1,5 +1,5 @@
 ---
-date: '2026-03-20T04:01:20+09:00'
+date: '2026-03-17T17:00:00+09:00'
 draft: false
 title: 'MCP(Model Context Protocol) 생태계 구축 및 핀터레스트 적용 사례 정리'
 tags:

@@ -1,5 +1,5 @@
 ---
-date: '2026-03-20T15:01:20+09:00'
+date: '2026-03-16T09:00:00+09:00'
 draft: false
 title: '제미나이 코드 어시스트 신기능: IntelliJ 및 VS Code 지원 확대'
 tags:

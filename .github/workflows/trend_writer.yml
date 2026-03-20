@@ -1,9 +1,9 @@
-name: Trend Writer — Hourly Tech Insight Post
+name: Trend Writer — 8-Hour Tech Insight Post
 
 on:
   schedule:
-    # 30분마다 실행 — GitHub Actions cron 지연 보완 (실질적 1시간 이내 실행 보장)
-    - cron: '*/30 * * * *'
+    # 8시간마다 실행 (UTC 0, 8, 16시 → KST 9, 17, 1시)
+    - cron: '0 0,8,16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

@@ -1,5 +1,5 @@
 ---
-date: '2026-03-19T19:29:15+09:00'
+date: '2026-03-12T09:00:00+09:00'
 draft: false
 title: '구글 Developer Knowledge API 및 MCP 서버: AI 에이전트 문서 검색 가이드'
 tags:

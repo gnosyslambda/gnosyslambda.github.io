@@ -1,5 +1,5 @@
 ---
-date: '2026-03-20T14:01:21+09:00'
+date: '2026-03-15T23:00:00+09:00'
 draft: false
 title: 'Gemini Code Assist 업데이트: 에이전트 모드와 신규 기능 정리'
 tags:

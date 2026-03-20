@@ -1,5 +1,5 @@
 ---
-date: '2026-03-20T08:01:59+09:00'
+date: '2026-03-15T17:00:00+09:00'
 draft: false
 title: 'Gemini CLI Conductor: AI 생성 코드 자동 리뷰 기능 및 활용법'
 tags:
