@@ -1,0 +1,42 @@
+{{- if .IsPage }}
+<style>
+#view-badge {
+  display: none;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  z-index: 9999;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  letter-spacing: 0.02em;
+}
+</style>
+<div id="view-badge">👁 <span id="view-count">-</span></div>
+<script>
+(function () {
+  if (localStorage.getItem('blog_owner') !== '1') return;
+
+  var badge = document.getElementById('view-badge');
+  var countEl = document.getElementById('view-count');
+
+  // 페이지 경로를 key로 사용 (슬래시 → 하이픈)
+  var key = (window.location.pathname || '/').replace(/\//g, '-').replace(/^-|-$/g, '') || 'home';
+  var ns = 'gnosyslambda';
+
+  fetch('https://api.countapi.xyz/hit/' + ns + '/' + key)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      countEl.textContent = Number(data.value).toLocaleString() + ' views';
+      badge.style.display = 'block';
+    })
+    .catch(function() {
+      // API 실패 시 조용히 무시
+    });
+})();
+</script>
+{{- end }}
