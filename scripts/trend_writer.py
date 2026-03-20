@@ -96,6 +96,7 @@ def fetch_recent_articles(feeds: list[dict], hours: int = FETCH_WINDOW_HOURS) ->
                 "summary": _clean_html(entry.get("summary", "")),
                 "published": pub_date.isoformat() if pub_date else "",
                 "tags": feed_meta.get("tags", []),
+                "blog_category": feed_meta.get("blog_category", "기술 블로그"),
                 "uid": _uid(entry.get("link", entry.get("title", ""))),
             }
             if article["title"] and article["link"]:
@@ -525,7 +526,7 @@ title: '{title.replace("'", "''")}'
 tags:
 {tags_yaml}
 categories:
-  - "기술 블로그"
+  - "{article.get('blog_category', '기술 블로그')}"
 description: "{meta.get('description', article['summary'][:150]).replace('"', "'")}"
 source:
   name: "{article.get('source', '')}"

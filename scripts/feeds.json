@@ -4,121 +4,253 @@
       "name": "Netflix Tech Blog",
       "url": "https://netflixtechblog.com/feed",
       "category": "streaming-infra",
+      "blog_category": "클라우드 · 인프라",
       "tags": ["netflix", "streaming", "scalability", "backend"]
     },
     {
       "name": "Uber Engineering",
       "url": "https://www.uber.com/en-US/blog/engineering/rss/",
       "category": "ride-hailing-infra",
+      "blog_category": "백엔드 개발",
       "tags": ["uber", "distributed-systems", "real-time", "backend"]
     },
     {
       "name": "Meta Engineering",
       "url": "https://engineering.fb.com/feed/",
       "category": "social-platform",
+      "blog_category": "AI · 머신러닝",
       "tags": ["meta", "facebook", "open-source", "ai", "infrastructure"]
     },
     {
       "name": "DoorDash Engineering",
       "url": "https://doordash.engineering/feed/",
       "category": "marketplace-tech",
+      "blog_category": "백엔드 개발",
       "tags": ["doordash", "marketplace", "microservices", "kotlin", "java"]
     },
     {
       "name": "Google Developers",
       "url": "https://developers.googleblog.com/feeds/posts/default",
       "category": "cloud-platform",
+      "blog_category": "AI · 머신러닝",
       "tags": ["google", "cloud", "ai", "developer-tools", "open-source"]
     },
     {
       "name": "AWS Blog",
       "url": "https://aws.amazon.com/blogs/aws/feed/",
       "category": "cloud-infra",
+      "blog_category": "클라우드 · 인프라",
       "tags": ["aws", "cloud", "serverless", "kubernetes", "devops"]
     },
     {
       "name": "LinkedIn Engineering",
       "url": "https://engineering.linkedin.com/blog.rss",
       "category": "professional-network",
+      "blog_category": "데이터 엔지니어링",
       "tags": ["linkedin", "distributed-systems", "data-engineering", "java"]
     },
     {
       "name": "Airbnb Tech",
       "url": "https://medium.com/feed/airbnb-engineering",
       "category": "marketplace-tech",
+      "blog_category": "데이터 엔지니어링",
       "tags": ["airbnb", "marketplace", "data", "ml", "backend"]
     },
     {
       "name": "Cloudflare Blog",
       "url": "https://blog.cloudflare.com/rss/",
       "category": "network-security",
+      "blog_category": "보안 · 네트워크",
       "tags": ["cloudflare", "cdn", "security", "performance", "edge"]
     },
     {
       "name": "GitHub Blog Engineering",
       "url": "https://github.blog/engineering.atom",
       "category": "developer-tools",
+      "blog_category": "개발 도구",
       "tags": ["github", "devtools", "ci-cd", "platform", "open-source"]
     },
     {
       "name": "GeekNews",
       "url": "https://feeds.feedburner.com/geeknews",
       "category": "tech-news",
+      "blog_category": "기술 트렌드",
       "tags": ["geeknews", "tech-news", "startup", "development"]
     },
     {
       "name": "Shopify Engineering",
       "url": "https://shopify.engineering/blog.atom",
       "category": "ecommerce-infra",
+      "blog_category": "백엔드 개발",
       "tags": ["shopify", "ecommerce", "ruby", "scalability", "platform"]
     },
     {
       "name": "Stripe Blog",
       "url": "https://stripe.com/blog/feed/rss",
       "category": "fintech-infra",
+      "blog_category": "핀테크 · 결제",
       "tags": ["stripe", "payments", "api-design", "reliability", "fintech"]
     },
     {
       "name": "Discord Blog",
       "url": "https://discord.com/blog/rss.xml",
       "category": "realtime-communication",
+      "blog_category": "백엔드 개발",
       "tags": ["discord", "real-time", "websocket", "rust", "scalability"]
     },
     {
       "name": "Spotify Engineering",
       "url": "https://engineering.atspotify.com/feed/",
       "category": "streaming-infra",
+      "blog_category": "데이터 엔지니어링",
       "tags": ["spotify", "microservices", "data-engineering", "ml", "backend"]
     },
     {
       "name": "Pinterest Engineering",
       "url": "https://medium.com/feed/pinterest-engineering",
       "category": "social-platform",
+      "blog_category": "AI · 머신러닝",
       "tags": ["pinterest", "recommendation", "ml", "ads", "scalability"]
     },
     {
       "name": "Stack Overflow Blog",
       "url": "https://stackoverflow.blog/feed/",
       "category": "developer-community",
+      "blog_category": "개발 문화",
       "tags": ["stackoverflow", "developer-survey", "ai", "engineering-culture"]
     },
     {
       "name": "Slack Engineering",
       "url": "https://slack.engineering/feed/",
       "category": "enterprise-collab",
+      "blog_category": "백엔드 개발",
       "tags": ["slack", "real-time", "websocket", "distributed-systems", "java"]
     },
     {
       "name": "Twitter Engineering",
       "url": "https://blog.twitter.com/engineering/en_us/topics/infrastructure.rss",
       "category": "social-platform",
+      "blog_category": "백엔드 개발",
       "tags": ["twitter", "x", "real-time", "distributed-systems", "scala"]
     },
     {
       "name": "Dropbox Tech",
       "url": "https://dropbox.tech/feed",
       "category": "cloud-storage",
+      "blog_category": "클라우드 · 인프라",
       "tags": ["dropbox", "storage", "sync", "reliability", "python"]
+    },
+    {
+      "name": "OpenAI Blog",
+      "url": "https://openai.com/blog/rss.xml",
+      "category": "ai-research",
+      "blog_category": "AI · 머신러닝",
+      "tags": ["openai", "gpt", "llm", "ai-safety", "research"]
+    },
+    {
+      "name": "Hugging Face Blog",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "category": "ai-research",
+      "blog_category": "AI · 머신러닝",
+      "tags": ["huggingface", "transformers", "nlp", "open-source", "llm"]
+    },
+    {
+      "name": "Databricks Blog",
+      "url": "https://www.databricks.com/blog/feed",
+      "category": "data-platform",
+      "blog_category": "데이터 엔지니어링",
+      "tags": ["databricks", "spark", "data-lakehouse", "mlops", "analytics"]
+    },
+    {
+      "name": "Hacker News Best",
+      "url": "https://hnrss.org/best",
+      "category": "tech-community",
+      "blog_category": "기술 트렌드",
+      "tags": ["hackernews", "startup", "programming", "tech-discussion"]
+    },
+    {
+      "name": "DEV Community",
+      "url": "https://dev.to/feed",
+      "category": "developer-community",
+      "blog_category": "개발 문화",
+      "tags": ["dev-to", "programming", "career", "open-source", "tutorial"]
+    },
+    {
+      "name": "The Pragmatic Engineer",
+      "url": "https://newsletter.pragmaticengineer.com/feed",
+      "category": "engineering-career",
+      "blog_category": "개발 문화",
+      "tags": ["career", "engineering-management", "big-tech", "salary", "job"]
+    },
+    {
+      "name": "Krebs on Security",
+      "url": "https://krebsonsecurity.com/feed/",
+      "category": "security-news",
+      "blog_category": "보안 · 네트워크",
+      "tags": ["cybersecurity", "hacking", "breach", "malware", "infosec"]
+    },
+    {
+      "name": "Schneier on Security",
+      "url": "https://www.schneier.com/feed/atom",
+      "category": "security-research",
+      "blog_category": "보안 · 네트워크",
+      "tags": ["security", "cryptography", "privacy", "policy", "infosec"]
+    },
+    {
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/feed/",
+      "category": "startup-news",
+      "blog_category": "스타트업 · 비즈니스",
+      "tags": ["startup", "funding", "vc", "product-launch", "business"]
+    },
+    {
+      "name": "a16z Blog",
+      "url": "https://a16z.com/feed/",
+      "category": "vc-insights",
+      "blog_category": "스타트업 · 비즈니스",
+      "tags": ["a16z", "venture-capital", "startup", "market-trends", "ai"]
+    },
+    {
+      "name": "HashiCorp Blog",
+      "url": "https://www.hashicorp.com/blog/feed.xml",
+      "category": "devops-tools",
+      "blog_category": "DevOps · 자동화",
+      "tags": ["terraform", "vault", "consul", "devops", "infrastructure-as-code"]
+    },
+    {
+      "name": "Grafana Blog",
+      "url": "https://grafana.com/blog/index.xml",
+      "category": "observability",
+      "blog_category": "DevOps · 자동화",
+      "tags": ["grafana", "prometheus", "observability", "monitoring", "loki"]
+    },
+    {
+      "name": "Elastic Blog",
+      "url": "https://www.elastic.co/blog/feed",
+      "category": "search-analytics",
+      "blog_category": "데이터 엔지니어링",
+      "tags": ["elasticsearch", "kibana", "search", "analytics", "observability"]
+    },
+    {
+      "name": "Figma Blog",
+      "url": "https://www.figma.com/blog/feed/",
+      "category": "design-tools",
+      "blog_category": "디자인 · UX",
+      "tags": ["figma", "design-system", "ux", "product-design", "collaboration"]
+    },
+    {
+      "name": "Vercel Blog",
+      "url": "https://vercel.com/blog/rss.xml",
+      "category": "frontend-platform",
+      "blog_category": "프론트엔드",
+      "tags": ["vercel", "nextjs", "frontend", "edge", "deployment"]
+    },
+    {
+      "name": "Kent C. Dodds Blog",
+      "url": "https://kentcdodds.com/blog/rss.xml",
+      "category": "frontend-dev",
+      "blog_category": "프론트엔드",
+      "tags": ["react", "testing", "javascript", "web-dev", "best-practices"]
     }
   ]
 }
