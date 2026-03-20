@@ -112,6 +112,10 @@ menu:
       name: About
       url: /about/
       weight: 60
+    - identifier: privacy
+      name: Privacy
+      url: /privacy/
+      weight: 70
 
 outputs:
   home:
