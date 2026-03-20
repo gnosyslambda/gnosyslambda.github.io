@@ -15,6 +15,11 @@
   gap: 0.6rem;
   margin-bottom: 2rem;
 }
+.comment-form-row {
+  display: flex;
+  gap: 0.6rem;
+}
+.comment-form-row input { flex: 1; }
 .comment-form input,
 .comment-form textarea {
   background: rgba(255,255,255,0.05);
@@ -24,9 +29,8 @@
   color: inherit;
   font-size: 0.9rem;
   font-family: inherit;
-  resize: vertical;
 }
-.comment-form textarea { min-height: 80px; }
+.comment-form textarea { min-height: 80px; resize: vertical; }
 .comment-form input:focus,
 .comment-form textarea:focus {
   outline: none;
@@ -57,16 +61,56 @@
 .comment-author { font-weight: 600; font-size: 0.88rem; }
 .comment-date { font-size: 0.78rem; opacity: 0.5; }
 .comment-content { font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; }
-.comment-delete {
+.comment-actions { display: flex; gap: 0.3rem; align-items: center; }
+.comment-btn {
   background: none;
   border: none;
-  color: #e05;
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0 0.3rem;
-  opacity: 0.6;
+  opacity: 0.5;
+  font-family: inherit;
 }
-.comment-delete:hover { opacity: 1; }
+.comment-btn:hover { opacity: 1; }
+.comment-btn.delete { color: #e05; }
+.comment-btn.edit { color: var(--primary); }
+.comment-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.comment-edit-form textarea {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  color: inherit;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+.comment-edit-form input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 0.5rem 0.8rem;
+  color: inherit;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+.comment-edit-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.comment-edit-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-save { background: var(--primary); color: var(--theme); }
+.btn-cancel { background: rgba(255,255,255,0.1); color: inherit; }
 #comments-empty { font-size: 0.88rem; opacity: 0.45; }
 </style>
 
@@ -74,7 +118,10 @@
   <h3>댓글 <span id="comment-count"></span></h3>
 
   <div class="comment-form">
-    <input id="comment-author" type="text" placeholder="이름" maxlength="30" />
+    <div class="comment-form-row">
+      <input id="comment-author" type="text" placeholder="이름" maxlength="30" />
+      <input id="comment-password" type="password" placeholder="비밀번호 (수정·삭제 시 필요)" maxlength="50" />
+    </div>
     <textarea id="comment-content" placeholder="댓글을 남겨주세요" maxlength="1000"></textarea>
     <button class="comment-submit" id="comment-submit">등록</button>
   </div>
@@ -88,10 +135,24 @@
   var SUPABASE_URL = 'https://epflfhnddqkdktjfxqgb.supabase.co';
   var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZmxmaG5kZHFrZGt0amZ4cWdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzYzNjYsImV4cCI6MjA4OTE1MjM2Nn0.T9WrJvQJOeprFESEil1BKhqrUSrB6dVQO3lSY0C0xw8';
   var TABLE = SUPABASE_URL + '/rest/v1/blog_comments';
+  var RPC = SUPABASE_URL + '/rest/v1/rpc/';
   var HEADERS = { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' };
   var path = window.location.pathname;
   var isOwner = new URLSearchParams(window.location.search).get('owner') === '1'
     || localStorage.getItem('blog_owner') === '1';
+
+  function sha256(str) {
+    var enc = new TextEncoder().encode(str);
+    return crypto.subtle.digest('SHA-256', enc).then(function (buf) {
+      return Array.from(new Uint8Array(buf)).map(function (b) {
+        return b.toString(16).padStart(2, '0');
+      }).join('');
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
   function formatDate(iso) {
     var d = new Date(iso);
@@ -106,66 +167,153 @@
     countEl.textContent = list.length ? '(' + list.length + ')' : '';
     if (!list.length) { empty.style.display = ''; return; }
     empty.style.display = 'none';
+
     list.forEach(function (c) {
-      var div = document.createElement('div');
-      div.className = 'comment-item';
-      div.innerHTML =
+      var item = document.createElement('div');
+      item.className = 'comment-item';
+      item.dataset.id = c.id;
+
+      item.innerHTML =
         '<div class="comment-meta">' +
           '<span class="comment-author">' + escapeHtml(c.author) + '</span>' +
-          '<span>' +
+          '<span class="comment-actions">' +
             '<span class="comment-date">' + formatDate(c.created_at) + '</span>' +
-            (isOwner ? ' <button class="comment-delete" data-id="' + c.id + '">삭제</button>' : '') +
+            '<button class="comment-btn edit">수정</button>' +
+            '<button class="comment-btn delete">삭제</button>' +
           '</span>' +
         '</div>' +
         '<div class="comment-content">' + escapeHtml(c.content) + '</div>';
-      el.appendChild(div);
-    });
-    if (isOwner) {
-      el.querySelectorAll('.comment-delete').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (!confirm('삭제할까요?')) return;
-          deleteComment(btn.dataset.id);
-        });
+
+      el.appendChild(item);
+
+      item.querySelector('.comment-btn.edit').addEventListener('click', function () {
+        showEditForm(item, c);
       });
-    }
+
+      item.querySelector('.comment-btn.delete').addEventListener('click', function () {
+        handleDelete(c.id);
+      });
+    });
   }
 
-  function escapeHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  function showEditForm(item, c) {
+    var contentEl = item.querySelector('.comment-content');
+    if (item.querySelector('.comment-edit-form')) return;
+    contentEl.style.display = 'none';
+
+    var form = document.createElement('div');
+    form.className = 'comment-edit-form';
+    form.innerHTML =
+      '<textarea>' + escapeHtml(c.content) + '</textarea>' +
+      (!isOwner ? '<input type="password" placeholder="비밀번호 입력" />' : '') +
+      '<div class="comment-edit-actions">' +
+        '<button class="btn-cancel">취소</button>' +
+        '<button class="btn-save">저장</button>' +
+      '</div>';
+
+    item.appendChild(form);
+
+    form.querySelector('.btn-cancel').addEventListener('click', function () {
+      form.remove();
+      contentEl.style.display = '';
+    });
+
+    form.querySelector('.btn-save').addEventListener('click', function () {
+      var newContent = form.querySelector('textarea').value.trim();
+      if (!newContent) return;
+
+      if (isOwner) {
+        // 오너: 비밀번호 없이 직접 PATCH
+        fetch(TABLE + '?id=eq.' + c.id, {
+          method: 'PATCH',
+          headers: Object.assign({}, HEADERS, { 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ content: newContent })
+        }).then(function () {
+          c.content = newContent;
+          form.remove();
+          contentEl.textContent = newContent;
+          contentEl.style.display = '';
+        });
+      } else {
+        var pw = form.querySelector('input[type=password]').value;
+        if (!pw) { alert('비밀번호를 입력해주세요.'); return; }
+        sha256(pw).then(function (hash) {
+          return fetch(RPC + 'update_blog_comment', {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({ p_id: c.id, p_password_hash: hash, p_content: newContent })
+          }).then(function (r) { return r.json(); });
+        }).then(function (ok) {
+          if (ok) {
+            c.content = newContent;
+            form.remove();
+            contentEl.textContent = newContent;
+            contentEl.style.display = '';
+          } else {
+            alert('비밀번호가 틀렸습니다.');
+          }
+        });
+      }
+    });
+  }
+
+  function handleDelete(id) {
+    if (isOwner) {
+      if (!confirm('삭제할까요?')) return;
+      fetch(TABLE + '?id=eq.' + id, { method: 'DELETE', headers: HEADERS })
+        .then(loadComments);
+      return;
+    }
+    var pw = prompt('비밀번호를 입력하세요');
+    if (!pw) return;
+    sha256(pw).then(function (hash) {
+      return fetch(RPC + 'delete_blog_comment', {
+        method: 'POST',
+        headers: HEADERS,
+        body: JSON.stringify({ p_id: id, p_password_hash: hash })
+      }).then(function (r) { return r.json(); });
+    }).then(function (ok) {
+      if (ok) loadComments();
+      else alert('비밀번호가 틀렸습니다.');
+    });
   }
 
   function loadComments() {
-    fetch(TABLE + '?page_path=eq.' + encodeURIComponent(path) + '&order=created_at.asc', { headers: HEADERS })
+    fetch(TABLE + '?page_path=eq.' + encodeURIComponent(path) + '&order=created_at.asc&select=id,author,content,created_at', { headers: HEADERS })
       .then(function (r) { return r.json(); })
       .then(renderComments)
       .catch(function () {});
   }
 
-  function deleteComment(id) {
-    fetch(TABLE + '?id=eq.' + id, { method: 'DELETE', headers: HEADERS })
-      .then(loadComments)
-      .catch(function () {});
-  }
-
   document.getElementById('comment-submit').addEventListener('click', function () {
     var author = document.getElementById('comment-author').value.trim();
+    var pw = document.getElementById('comment-password').value;
     var content = document.getElementById('comment-content').value.trim();
-    if (!author || !content) { alert('이름과 댓글을 입력해주세요.'); return; }
+    if (!author || !pw || !content) { alert('이름, 비밀번호, 댓글을 모두 입력해주세요.'); return; }
     var btn = this;
     btn.disabled = true;
-    fetch(TABLE, {
-      method: 'POST',
-      headers: Object.assign({}, HEADERS, { 'Prefer': 'return=minimal' }),
-      body: JSON.stringify({ page_path: path, author: author, content: content })
-    })
-    .then(function () {
+    sha256(pw).then(function (hash) {
+      return fetch(TABLE, {
+        method: 'POST',
+        headers: Object.assign({}, HEADERS, { 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ page_path: path, author: author, content: content, password_hash: hash })
+      });
+    }).then(function () {
       document.getElementById('comment-author').value = '';
+      document.getElementById('comment-password').value = '';
       document.getElementById('comment-content').value = '';
       loadComments();
-    })
-    .catch(function () { alert('등록 실패. 다시 시도해주세요.'); })
-    .finally(function () { btn.disabled = false; });
+    }).catch(function () {
+      alert('등록 실패. 다시 시도해주세요.');
+    }).finally(function () {
+      btn.disabled = false;
+    });
   });
+
+  // 오너 RLS 우회: password_hash 컬럼 노출 방지 (select에서 제외됨)
+  if (isOwner && new URLSearchParams(window.location.search).get('owner') === '1') {
+    localStorage.setItem('blog_owner', '1');
+  }
 
   loadComments();
 })();
