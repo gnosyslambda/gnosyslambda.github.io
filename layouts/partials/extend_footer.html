@@ -5,38 +5,52 @@
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0,0,0,0.78);
   color: #fff;
-  font-size: 0.75rem;
-  padding: 0.35rem 0.7rem;
+  font-size: 0.73rem;
+  padding: 0.35rem 0.75rem;
   border-radius: 999px;
   z-index: 9999;
   backdrop-filter: blur(6px);
   pointer-events: none;
   letter-spacing: 0.02em;
+  user-select: none;
 }
 </style>
-<div id="view-badge">👁 <span id="view-count">-</span></div>
+<div id="view-badge">👁 <span id="view-count">…</span></div>
 <script>
 (function () {
-  if (localStorage.getItem('blog_owner') !== '1') return;
+  var SUPABASE_URL = 'https://epflfhnddqkdktjfxqgb.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZmxmaG5kZHFrZGt0amZ4cWdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzYzNjYsImV4cCI6MjA4OTE1MjM2Nn0.T9WrJvQJOeprFESEil1BKhqrUSrB6dVQO3lSY0C0xw8';
+
+  var isOwner = new URLSearchParams(window.location.search).get('owner') === '1'
+    || localStorage.getItem('blog_owner') === '1';
+
+  if (!isOwner) return;
 
   var badge = document.getElementById('view-badge');
   var countEl = document.getElementById('view-count');
+  var path = window.location.pathname;
 
-  // 페이지 경로를 key로 사용 (슬래시 → 하이픈)
-  var key = (window.location.pathname || '/').replace(/\//g, '-').replace(/^-|-$/g, '') || 'home';
-  var ns = 'gnosyslambda';
-
-  fetch('https://api.countapi.xyz/hit/' + ns + '/' + key)
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      countEl.textContent = Number(data.value).toLocaleString() + ' views';
-      badge.style.display = 'block';
-    })
-    .catch(function() {
-      // API 실패 시 조용히 무시
-    });
+  fetch(SUPABASE_URL + '/rest/v1/rpc/increment_view', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ p_path: path })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(count) {
+    countEl.textContent = Number(count).toLocaleString() + ' views';
+    badge.style.display = 'block';
+    // URL에 ?owner=1 있으면 localStorage에도 저장 (다음부터 자동)
+    if (new URLSearchParams(window.location.search).get('owner') === '1') {
+      localStorage.setItem('blog_owner', '1');
+    }
+  })
+  .catch(function() {});
 })();
 </script>
 {{- end }}
