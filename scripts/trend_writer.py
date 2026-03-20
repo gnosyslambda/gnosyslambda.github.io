@@ -483,9 +483,13 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
 
 
 def build_tags(article: dict, new_keywords: list[str]) -> list[str]:
-    base = article.get("tags", [])
-    combined = list(set(base + new_keywords + ["백엔드", "아키텍처", "개발"]))
-    return [t.replace(" ", "-") for t in combined]
+    FIXED_TAGS = ["백엔드", "아키텍처", "개발"]
+    # 피드 태그 중 의미있는 것만 (영문 기술 용어 위주, 최대 3개)
+    feed_tags = [t for t in article.get("tags", []) if len(t) > 2][:3]
+    # LLM 키워드 중 한국어 키워드 우선, 최대 4개
+    kr_keywords = [k for k in new_keywords if re.search(r"[가-힣]", k)][:4]
+    combined = list(dict.fromkeys(FIXED_TAGS + kr_keywords + feed_tags))
+    return [t.replace(" ", "-") for t in combined[:8]]
 
 
 def slugify(text: str) -> str:
