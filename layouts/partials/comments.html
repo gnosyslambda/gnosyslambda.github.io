@@ -1,16 +1,172 @@
-<script src="https://giscus.app/client.js"
-  data-repo="gnosyslambda/gnosyslambda.github.io"
-  data-repo-id="R_kgDORiCZTA"
-  data-category="General"
-  data-category-id="DIC_kwDORiCZTM4C40yY"
-  data-mapping="pathname"
-  data-strict="0"
-  data-reactions-enabled="1"
-  data-emit-metadata="0"
-  data-input-position="bottom"
-  data-theme="dark"
-  data-lang="ko"
-  data-loading="lazy"
-  crossorigin="anonymous"
-  async>
+<style>
+#comments-section {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+#comments-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  color: var(--primary);
+}
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 2rem;
+}
+.comment-form input,
+.comment-form textarea {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  color: inherit;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+}
+.comment-form textarea { min-height: 80px; }
+.comment-form input:focus,
+.comment-form textarea:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.4);
+}
+.comment-submit {
+  align-self: flex-end;
+  background: var(--primary);
+  color: var(--theme);
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.2rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.comment-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.comment-item {
+  padding: 0.9rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.comment-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.comment-author { font-weight: 600; font-size: 0.88rem; }
+.comment-date { font-size: 0.78rem; opacity: 0.5; }
+.comment-content { font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; }
+.comment-delete {
+  background: none;
+  border: none;
+  color: #e05;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  opacity: 0.6;
+}
+.comment-delete:hover { opacity: 1; }
+#comments-empty { font-size: 0.88rem; opacity: 0.45; }
+</style>
+
+<div id="comments-section">
+  <h3>댓글 <span id="comment-count"></span></h3>
+
+  <div class="comment-form">
+    <input id="comment-author" type="text" placeholder="이름" maxlength="30" />
+    <textarea id="comment-content" placeholder="댓글을 남겨주세요" maxlength="1000"></textarea>
+    <button class="comment-submit" id="comment-submit">등록</button>
+  </div>
+
+  <div id="comments-list"></div>
+  <p id="comments-empty" style="display:none">첫 댓글을 남겨보세요.</p>
+</div>
+
+<script>
+(function () {
+  var SUPABASE_URL = 'https://epflfhnddqkdktjfxqgb.supabase.co';
+  var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZmxmaG5kZHFrZGt0amZ4cWdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzYzNjYsImV4cCI6MjA4OTE1MjM2Nn0.T9WrJvQJOeprFESEil1BKhqrUSrB6dVQO3lSY0C0xw8';
+  var TABLE = SUPABASE_URL + '/rest/v1/blog_comments';
+  var HEADERS = { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' };
+  var path = window.location.pathname;
+  var isOwner = new URLSearchParams(window.location.search).get('owner') === '1'
+    || localStorage.getItem('blog_owner') === '1';
+
+  function formatDate(iso) {
+    var d = new Date(iso);
+    return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function renderComments(list) {
+    var el = document.getElementById('comments-list');
+    var empty = document.getElementById('comments-empty');
+    var countEl = document.getElementById('comment-count');
+    el.innerHTML = '';
+    countEl.textContent = list.length ? '(' + list.length + ')' : '';
+    if (!list.length) { empty.style.display = ''; return; }
+    empty.style.display = 'none';
+    list.forEach(function (c) {
+      var div = document.createElement('div');
+      div.className = 'comment-item';
+      div.innerHTML =
+        '<div class="comment-meta">' +
+          '<span class="comment-author">' + escapeHtml(c.author) + '</span>' +
+          '<span>' +
+            '<span class="comment-date">' + formatDate(c.created_at) + '</span>' +
+            (isOwner ? ' <button class="comment-delete" data-id="' + c.id + '">삭제</button>' : '') +
+          '</span>' +
+        '</div>' +
+        '<div class="comment-content">' + escapeHtml(c.content) + '</div>';
+      el.appendChild(div);
+    });
+    if (isOwner) {
+      el.querySelectorAll('.comment-delete').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('삭제할까요?')) return;
+          deleteComment(btn.dataset.id);
+        });
+      });
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function loadComments() {
+    fetch(TABLE + '?page_path=eq.' + encodeURIComponent(path) + '&order=created_at.asc', { headers: HEADERS })
+      .then(function (r) { return r.json(); })
+      .then(renderComments)
+      .catch(function () {});
+  }
+
+  function deleteComment(id) {
+    fetch(TABLE + '?id=eq.' + id, { method: 'DELETE', headers: HEADERS })
+      .then(loadComments)
+      .catch(function () {});
+  }
+
+  document.getElementById('comment-submit').addEventListener('click', function () {
+    var author = document.getElementById('comment-author').value.trim();
+    var content = document.getElementById('comment-content').value.trim();
+    if (!author || !content) { alert('이름과 댓글을 입력해주세요.'); return; }
+    var btn = this;
+    btn.disabled = true;
+    fetch(TABLE, {
+      method: 'POST',
+      headers: Object.assign({}, HEADERS, { 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({ page_path: path, author: author, content: content })
+    })
+    .then(function () {
+      document.getElementById('comment-author').value = '';
+      document.getElementById('comment-content').value = '';
+      loadComments();
+    })
+    .catch(function () { alert('등록 실패. 다시 시도해주세요.'); })
+    .finally(function () { btn.disabled = false; });
+  });
+
+  loadComments();
+})();
 </script>
