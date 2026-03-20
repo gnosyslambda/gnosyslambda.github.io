@@ -31,33 +31,54 @@
   var badge = document.getElementById('view-badge');
   var countEl = document.getElementById('view-count');
   var path = window.location.pathname;
-  var sessionKey = 'viewed_' + path;
 
   // URL에 ?owner=1 있으면 localStorage에도 저장 (다음부터 자동)
   if (new URLSearchParams(window.location.search).get('owner') === '1') {
     localStorage.setItem('blog_owner', '1');
   }
 
-  // 세션 내 이미 카운트한 페이지면 증가 없이 현재 카운트만 조회
-  var alreadyCounted = sessionStorage.getItem(sessionKey);
+  var isOwner = new URLSearchParams(window.location.search).get('owner') === '1'
+    || localStorage.getItem('blog_owner') === '1';
 
-  var endpoint = alreadyCounted
-    ? SUPABASE_URL + '/rest/v1/page_views?select=view_count&page_path=eq.' + encodeURIComponent(path)
-    : SUPABASE_URL + '/rest/v1/rpc/increment_view';
+  // 24시간 내 같은 페이지 중복 카운트 방지
+  var dedupKey = 'vc_' + path;
+  var lastSeen = localStorage.getItem(dedupKey);
+  var alreadyCounted = lastSeen && (Date.now() - parseInt(lastSeen)) < 86400000;
 
-  var fetchOpts = alreadyCounted
-    ? { method: 'GET', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
-    : { method: 'POST', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_path: path }) };
-
-  fetch(endpoint, fetchOpts)
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    var count = alreadyCounted ? (data[0] ? data[0].view_count : 0) : data;
-    countEl.textContent = Number(count).toLocaleString() + ' views';
-    badge.style.display = 'block';
-    if (!alreadyCounted) sessionStorage.setItem(sessionKey, '1');
-  })
-  .catch(function() {});
+  if (alreadyCounted) {
+    // 카운트 증가 없이 현재 숫자만 조회 (오너에게만 표시)
+    if (!isOwner) return;
+    fetch(SUPABASE_URL + '/rest/v1/page_views?select=view_count&page_path=eq.' + encodeURIComponent(path), {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var count = data[0] ? data[0].view_count : 0;
+      countEl.textContent = Number(count).toLocaleString() + ' views';
+      badge.style.display = 'block';
+    })
+    .catch(function() {});
+  } else {
+    // 모든 방문자: 조회수 증가
+    fetch(SUPABASE_URL + '/rest/v1/rpc/increment_view', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ p_path: path })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(count) {
+      localStorage.setItem(dedupKey, String(Date.now()));
+      // 오너만 배지 표시
+      if (!isOwner) return;
+      countEl.textContent = Number(count).toLocaleString() + ' views';
+      badge.style.display = 'block';
+    })
+    .catch(function() {});
+  }
 })();
 </script>
 {{- end }}
