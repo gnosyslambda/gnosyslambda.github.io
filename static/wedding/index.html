@@ -25,9 +25,12 @@
   function buildSlide(src,idx){
     var slide=document.createElement('div');
     slide.className='swiper-slide';
+    var zoomContainer=document.createElement('div');
+    zoomContainer.className='swiper-zoom-container';
     var img=document.createElement('img');
     img.src=src;img.alt='gallery '+(idx+1);img.draggable=false;img.loading='lazy';
-    slide.appendChild(img);
+    zoomContainer.appendChild(img);
+    slide.appendChild(zoomContainer);
     return slide;
   }
 
@@ -85,6 +88,7 @@
     new Swiper(swiperEl,{
       effect:'slide',
       speed:350,
+      zoom:{maxRatio:3},
       spaceBetween:0,
       grabCursor:true,
       touchRatio:1.2,
