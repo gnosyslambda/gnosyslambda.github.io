@@ -2,4 +2,4 @@
 
 
 :root{color-scheme:only light}html,body,#root{background-color:var(--theme-bg-color)!important;color-scheme:only light;forced-color-adjust:none}html.samsung-dark-fix{background:#ffe7e7!important;color:#282c34!important;filter:invert(1) hue-rotate(180deg)}html.samsung-dark-fix body,html.samsung-dark-fix #root{background:#ffe7e7!important;color:#282c34!important}html.samsung-dark-fix img,html.samsung-dark-fix video,html.samsung-dark-fix picture,html.samsung-dark-fix svg,html.samsung-dark-fix canvas,html.samsung-dark-fix iframe{filter:invert(1) hue-rotate(180deg)}
- .location .map-wrapper{overflow:hidden}.location .map-wrapper .map-frame{display:block;height:calc(100% + 6rem)!important}.location .map-wrapper:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3rem;background:var(--alt-bg-color);z-index:4;pointer-events:none}
+ .location .map-wrapper{overflow:hidden}.location .map-wrapper .map-frame{display:block;height:calc(100% + 6rem)!important}.location .map-wrapper .map-attribution-mask{position:absolute;left:0;right:0;bottom:0;height:3rem;background:var(--alt-bg-color);z-index:4;pointer-events:none}
