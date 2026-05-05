@@ -1,0 +1,116 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="color-scheme" content="only light"/><meta name="supported-color-schemes" content="only light"/><meta name="theme-color" content="#f9f9f9"/><style>html,body{background:#ffe7e7!important;color:#282c34!important;color-scheme:only light!important}html *{color-scheme:only light!important}body{opacity:1!important}#root{background:#ffe7e7!important;min-height:100vh}html.samsung-dark-fix{filter:invert(1) hue-rotate(180deg)}html.samsung-dark-fix img,html.samsung-dark-fix video,html.samsung-dark-fix picture,html.samsung-dark-fix svg,html.samsung-dark-fix canvas,html.samsung-dark-fix iframe{filter:invert(1) hue-rotate(180deg)}</style><script>(()=>{const e=document.documentElement,t=navigator.userAgent||"",o=/SamsungBrowser/i.test(t),r=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;e.style.setProperty("color-scheme","only light","important");e.style.setProperty("background","#ffe7e7","important");e.style.setProperty("color","#282c34","important");o&&r&&e.classList.add("samsung-dark-fix");document.addEventListener("DOMContentLoaded",()=>{document.body&&document.body.style&&document.body.style.setProperty("background","#ffe7e7","important");document.body&&document.body.style&&document.body.style.setProperty("color","#282c34","important")},{once:!0})})();</script><meta property="og:type" content="website"/><meta property="og:title" content="우석 ❤️ 경빈 결혼합니다."/><meta property="og:image" content="/wedding-wsgb/preview_image_v2.png"/><meta property="og:url" content="/wedding-wsgb/"/><meta property="og:description" content="2026년 6월 28일 일요일 오전 11시 메리다웨딩컨벤션 3층 마르시아홀"/><link rel="preload" href="/wedding-wsgb/MapoGoldenPierA.woff" as="font" crossorigin/><link rel="preload" href="/wedding-wsgb/AlluraRegular.woff" as="font" crossorigin/><link rel="manifest" href="/wedding-wsgb/manifest.json"/><link rel="icon" href="/wedding-wsgb/favicon.ico"/><link rel="stylesheet" href="/wedding-wsgb/font.css"/><title>우석 ❤️ 경빈 결혼합니다.</title><script type="module" crossorigin src="/wedding-wsgb/assets/index-hRTl-fwz.js"></script><link rel="stylesheet" crossorigin href="/wedding-wsgb/assets/index-K4XBuehR.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"><script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script><style>
+.bg-effect{pointer-events:none!important}
+.gallery .swiper-container-gallery{width:100%;display:flex;flex-direction:column;align-items:center}
+.gallery .swiper{width:100%;overflow:hidden;position:relative;z-index:1;aspect-ratio:3/4}
+.gallery .swiper-slide{display:flex;justify-content:center;align-items:center;width:100%;height:100%;padding:0}
+.gallery .swiper-slide img{width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none;user-select:none}
+.gallery .swiper-dots{display:flex;justify-content:center;align-items:center;margin-top:.6rem;margin-bottom:.3rem;min-height:12px}
+.gallery .swiper-dots .dot{border-radius:50%;background:var(--dark-grey-color);transition:width .3s,height .3s,opacity .3s,margin .3s;transition-timing-function:cubic-bezier(.4,0,.2,1);flex-shrink:0;width:8px;height:8px;margin:0 3.5px;opacity:.35}
+.gallery .swiper-dots .dot.active{width:12px;height:12px;background:var(--alt-color);opacity:1;margin:0 3.5px}
+.gallery .swiper-dots .dot.near{width:8px;height:8px;opacity:.5;margin:0 3.5px}
+.gallery .swiper-dots .dot.far{width:5px;height:5px;opacity:.25;margin:0 2.5px}
+.gallery .swiper-dots .dot.hidden{display:none}
+.gallery .swiper-button-prev,.gallery .swiper-button-next{color:rgba(255,255,255,.85);--swiper-navigation-size:.9rem;width:1.8rem;height:1.8rem;background:rgba(0,0,0,.15);border-radius:50%;top:50%;margin-top:-.9rem;transition:background .2s}
+.gallery .swiper-button-prev:hover,.gallery .swiper-button-next:hover{background:rgba(0,0,0,.3)}
+.gallery .swiper-button-prev{left:.4rem}
+.gallery .swiper-button-next{right:.4rem}
+.gallery .swiper-button-prev::after,.gallery .swiper-button-next::after{font-size:.75rem;font-weight:700}
+.gallery .carousel-wrapper{display:none!important}
+.gallery .carousel-indicator{display:none!important}
+</style></head><body style="background:#ffe7e7!important;color:#282c34!important"><div id="root"></div><script>
+(function(){
+  var images=[];
+  for(var i=1;i<=18;i++) images.push('/wedding-wsgb/assets/gallery'+i+'.jpg');
+
+  function buildSlide(src,idx){
+    var slide=document.createElement('div');
+    slide.className='swiper-slide';
+    var zoomContainer=document.createElement('div');
+    zoomContainer.className='swiper-zoom-container';
+    var img=document.createElement('img');
+    img.src=src;img.alt='gallery '+(idx+1);img.draggable=false;img.loading='lazy';
+    zoomContainer.appendChild(img);
+    slide.appendChild(zoomContainer);
+    return slide;
+  }
+
+  function initSwiper(){
+    var gallery=document.querySelector('.card.gallery');
+    if(!gallery)return false;
+    var wrapper=gallery.querySelector('.carousel-wrapper');
+    if(!wrapper)return false;
+
+    var container=document.createElement('div');
+    container.className='swiper-container-gallery';
+
+    var swiperEl=document.createElement('div');
+    swiperEl.className='swiper';
+    var swiperWrapper=document.createElement('div');
+    swiperWrapper.className='swiper-wrapper';
+    images.forEach(function(src,i){swiperWrapper.appendChild(buildSlide(src,i));});
+    swiperEl.appendChild(swiperWrapper);
+
+    var prevBtn=document.createElement('div');
+    prevBtn.className='swiper-button-prev';
+    var nextBtn=document.createElement('div');
+    nextBtn.className='swiper-button-next';
+    swiperEl.appendChild(prevBtn);
+    swiperEl.appendChild(nextBtn);
+
+    var dotsEl=document.createElement('div');
+    dotsEl.className='swiper-dots';
+    var WINDOW=5;
+    var dots=[];
+    for(var d=0;d<images.length;d++){
+      var dot=document.createElement('div');
+      dot.className='dot';
+      dotsEl.appendChild(dot);
+      dots.push(dot);
+    }
+
+    function updateDots(activeIdx){
+      var half=Math.floor(WINDOW/2);
+      for(var d=0;d<dots.length;d++){
+        var dist=Math.abs(d-activeIdx);
+        dots[d].className='dot';
+        if(d===activeIdx){dots[d].className='dot active';}
+        else if(dist===1){dots[d].className='dot near';}
+        else if(dist===2){dots[d].className='dot far';}
+        else{dots[d].className='dot hidden';}
+      }
+    }
+    updateDots(0);
+
+    container.appendChild(swiperEl);
+    container.appendChild(dotsEl);
+    wrapper.parentNode.insertBefore(container,wrapper);
+
+    new Swiper(swiperEl,{
+      effect:'slide',
+      speed:350,
+      zoom:{maxRatio:3},
+      spaceBetween:0,
+      grabCursor:true,
+      touchRatio:1.2,
+      resistance:true,
+      resistanceRatio:.6,
+      navigation:{nextEl:nextBtn,prevEl:prevBtn},
+      on:{slideChange:function(){updateDots(this.realIndex);}}
+    });
+    return true;
+  }
+
+  function waitAndInit(){
+    if(typeof Swiper==='undefined'){setTimeout(waitAndInit,100);return;}
+    if(initSwiper())return;
+    var obs=new MutationObserver(function(muts,o){
+      if(initSwiper()){o.disconnect();}
+    });
+    obs.observe(document.getElementById('root'),{childList:true,subtree:true});
+    setTimeout(function(){obs.disconnect();},15000);
+  }
+
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',waitAndInit);}
+  else{waitAndInit();}
+})();
+</script></body></html>
