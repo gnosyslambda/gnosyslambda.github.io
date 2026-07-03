@@ -13,6 +13,14 @@ on:
         required: false
         default: false
         type: boolean
+      track:
+        description: '글쓰기 트랙'
+        required: false
+        default: tech
+        type: choice
+        options:
+          - issue
+          - tech
 
 permissions:
   contents: write
@@ -49,15 +57,16 @@ jobs:
         run: pip install -r scripts/requirements.txt
 
       # ── 4. 포스트 생성 ───────────────────────────
-      - name: Generate tech insight post
+      - name: Generate tracked blog post
         id: generate
         env:
           FORCE_RUN: ${{ github.event.inputs.force }}
+          BLOG_TRACK: ${{ github.event.inputs.track || 'tech' }}
         run: |
           set -uo pipefail
-          
+
           # 파이썬 스크립트 실행 결과를 파일에 저장하며 동시에 출력
-          python scripts/trend_writer.py 2>&1 | tee output.log
+          python scripts/trend_writer.py --track "${BLOG_TRACK}" 2>&1 | tee output.log
           
           # 파이썬 스크립트 실패 시 에러 처리
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -97,11 +106,11 @@ jobs:
           FILENAME="${{ steps.generate.outputs.created_filename }}"
           KST_DATE=$(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')
           
-          git commit -m "feat: 해외 테크 블로그 번역 포스트 발행 (${KST_DATE})
+          git commit -m "feat: 트랙 기반 블로그 포스트 발행 (${KST_DATE})
 
           - 파일: ${FILENAME}
           - 자동 생성: trend_writer.py + Codex
-          - 해외 기술 블로그 번역·큐레이션"
+          - 트랙 기반 RSS 큐레이션"
           
           git push origin main
 
@@ -120,5 +129,6 @@ jobs:
           echo "## ✅ Trend Writer 완료" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **생성 파일**: ${{ steps.generate.outputs.created_filename }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **트랙**: ${{ github.event.inputs.track || 'tech' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **실행 시각**: $(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')" >> "$GITHUB_STEP_SUMMARY"
           echo "- **배포 URL**: https://gnosyslambda.github.io/posts/" >> "$GITHUB_STEP_SUMMARY"

@@ -12,13 +12,17 @@ Usage:
 import os
 import re
 import sys
+import argparse
 import json
 import random
 import logging
 import hashlib
 import subprocess
 import tempfile
+import signal
+import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -41,13 +45,45 @@ SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent
 FEEDS_PATH = SCRIPT_DIR / "feeds.json"
 POSTS_DIR = REPO_ROOT / "content" / "posts"
+REVIEW_DRAFTS_DIR = REPO_ROOT / "local_drafts" / "review"
 SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
-CODEX_REASONING_EFFORT = os.environ.get("CODEX_REASONING_EFFORT", "medium")
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.5")
+CODEX_REASONING_EFFORT = os.environ.get("CODEX_REASONING_EFFORT", "xhigh")
 CODEX_TIMEOUT_SECONDS = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "900"))
+TOPICS_PER_RUN = min(10, max(1, int(os.environ.get("TOPICS_PER_RUN", "3"))))
+POST_VARIANTS = min(5, max(1, int(os.environ.get("POST_VARIANTS", "5"))))
+POST_REPAIR_VARIANTS = min(POST_VARIANTS, max(1, int(os.environ.get("POST_REPAIR_VARIANTS", "2"))))
+POST_JUDGES = min(5, max(1, int(os.environ.get("POST_JUDGES", "2"))))
+POST_MIN_SCORE = float(os.environ.get("POST_MIN_SCORE", "95"))
+POST_REVIEW_MIN_SCORE = float(os.environ.get("POST_REVIEW_MIN_SCORE", "90"))
+POST_POLISH_MIN_SCORE = float(os.environ.get("POST_POLISH_MIN_SCORE", "93"))
+POST_MAX_ROUNDS = max(1, int(os.environ.get("POST_MAX_ROUNDS", "2")))
+CANDIDATE_TIMEOUT_SECONDS = int(os.environ.get("CANDIDATE_TIMEOUT_SECONDS", str(CODEX_TIMEOUT_SECONDS)))
+JUDGE_TIMEOUT_SECONDS = int(os.environ.get("JUDGE_TIMEOUT_SECONDS", str(CODEX_TIMEOUT_SECONDS)))
+QUALITY_HISTORY_PATH = SCRIPT_DIR / ".quality_history.jsonl"
 FETCH_WINDOW_HOURS = 336         # 최근 14일 기사 수집 (빅테크 블로그 발행 빈도 고려)
+DEFAULT_TRACK = "tech"
+TRACKS = {"tech", "issue"}
+CURRENT_TRACK = DEFAULT_TRACK
+QUALITY_HISTORY_MAX_ROWS = 1000
+QUALITY_MEMORY_MAX_ROWS = 50
+QUALITY_MEMORY_MAX_CHARS = 2000
+QUALITY_STRATEGIES = (
+    "community-first",
+    "risk-analysis",
+    "practical-explainer",
+    "contrarian-check",
+)
+ISSUE_CODE_RULES = (
+    ("single_source_summary", ("단일", "요약", "single", "source", "회사", "article")),
+    ("weak_community_angle", ("커뮤니티", "논쟁", "반응", "hn", "reddit", "github")),
+    ("generic_conclusion", ("결론", "일반적", "generic", "뻔", "추상")),
+    ("missing_counterpoint", ("반론", "counter", "찬반", "균형", "우려")),
+    ("thin_evidence", ("근거", "수치", "사례", "evidence", "출처")),
+    ("stale_structure", ("구조", "반복", "나열", "템플릿", "흐름")),
+)
 MAX_ARTICLES_TO_SCORE = 20       # LLM 혁신도 평가 최대 기사 수
 MAX_BODY_CHARS = 10000           # 본문 최대 글자 수 (토큰 절약)
 HTTP_TIMEOUT = 15                # 요청 타임아웃(초)
@@ -71,6 +107,16 @@ COMMUNITY_SIGNAL_SOURCES = {
     "Lobsters",
     "Stack Overflow Blog",
     "GitHub Blog Engineering",
+    "Reddit LocalLLaMA",
+    "Reddit OpenAI",
+    "Reddit MachineLearning",
+    "Reddit Technology",
+    "Reddit Programming",
+    "YouTube Two Minute Papers",
+    "YouTube AI Explained",
+    "YouTube Computerphile",
+    "YouTube Fireship",
+    "GitHub Trending",
 }
 REFERENCE_ONLY_SOURCES = {
     "Netflix Tech Blog",
@@ -107,6 +153,12 @@ ARCHITECTURE_SIGNAL_KEYWORDS = (
     "kubernetes", "container", "runtime", "compiler", "observability", "security",
     "scalability", "performance", "latency", "consistency", "migration",
 )
+ISSUE_SIGNAL_KEYWORDS = (
+    "ai", "model", "government", "policy", "regulation", "ban", "blocked",
+    "lawsuit", "copyright", "privacy", "safety", "moderation", "platform",
+    "community", "controversy", "backlash", "debate", "openai", "anthropic",
+    "google", "meta", "x", "twitter", "reddit", "youtube", "tiktok", "security", "breach",
+)
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -114,6 +166,314 @@ HEADERS = {
         "Chrome/123.0.0.0 Safari/537.36"
     )
 }
+
+TRACK_FEED_SOURCES = {
+    "issue": {
+        "Hacker News Best",
+        "GeekNews",
+        "The Pragmatic Engineer",
+        "Krebs on Security",
+        "Schneier on Security",
+        "TechCrunch",
+        "a16z Blog",
+        "OpenAI Blog",
+        "Anthropic News",
+        "Hugging Face Blog",
+        "WIRED AI",
+        "WIRED Ideas",
+        "WIRED Security",
+        "MIT News AI",
+        "Reddit LocalLLaMA",
+        "Reddit OpenAI",
+        "Reddit MachineLearning",
+        "Reddit Technology",
+        "Reddit Programming",
+        "YouTube Two Minute Papers",
+        "YouTube AI Explained",
+        "YouTube Computerphile",
+        "YouTube Fireship",
+        "GitHub Trending",
+    },
+    "tech": set(),
+}
+
+QUALITY_RUBRIC = """
+100점 기준 평가목록:
+- 독자 문제와 검색 의도 7
+- 핵심 주장/관점 7
+- 제목/메타/슬러그 적합성 5
+- 사실관계/기술 정확성 10
+- 시점/범위/전제 명시 5
+- 근거/출처/검증 8
+- 구체적 사례와 재현 가능한 맥락 7
+- 보안/데이터/운영/플랫폼 리스크 6
+- 실무 적용 가치 8
+- 대안/트레이드오프/한계 5
+- 초반 흡입력/갈등 또는 긴장 제시 5
+- 사례에서 원칙으로 끌어올리는 힘 6
+- 구조/문단/전환 흐름 8
+- 문장 압축력과 한국어 자연스러움 6
+- 결말 회수와 여운/행동 유도 7
+초안 작성 단계부터 95점 이상을 목표로 삼고, 부족한 항목은 본문 안에서 보강하세요.
+"""
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a Korean blog post from RSS candidates.")
+    parser.add_argument(
+        "--track",
+        choices=sorted(TRACKS),
+        default=os.environ.get("BLOG_TRACK", DEFAULT_TRACK),
+        help="Writing workflow track: issue checks trending community topics, tech checks broad technical topics.",
+    )
+    return parser.parse_args()
+
+
+def configure_track(track: str) -> None:
+    global CURRENT_TRACK, SEEN_CACHE
+
+    CURRENT_TRACK = track
+    if track == DEFAULT_TRACK:
+        SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
+    else:
+        SEEN_CACHE = SCRIPT_DIR / f".seen_articles_{track}.json"
+    log.info(f"🧭 글쓰기 트랙: {CURRENT_TRACK} (seen: {SEEN_CACHE.name})")
+
+
+def filter_feeds_for_track(feeds: list[dict]) -> list[dict]:
+    selected: list[dict] = []
+
+    for feed in feeds:
+        feed_tracks = feed.get("tracks")
+        if feed_tracks:
+            if CURRENT_TRACK in feed_tracks:
+                selected.append(feed)
+            continue
+
+        if CURRENT_TRACK == "tech" or feed.get("name") in TRACK_FEED_SOURCES.get(CURRENT_TRACK, set()):
+            selected.append(feed)
+
+    return selected
+
+
+def track_context() -> str:
+    if CURRENT_TRACK == "issue":
+        return """
+이번 글은 issue 트랙입니다.
+- 무조건 논쟁만 찾지 말고, 커뮤니티와 업계에서 화제가 된 사건/정책/제품/플랫폼 변화를 찾습니다.
+- 예: AI 모델 차단, 정부 규제, 플랫폼 정책 변경, 보안 사고, 저작권/개인정보 이슈, 커뮤니티 반응이 붙은 출시.
+- 기술 해설보다 "왜 사람들이 반응했는가", "무엇이 불편하거나 중요한가", "앞으로 어떤 판단이 필요한가"를 중심에 둡니다.
+- 날짜, 당사자, 정책 범위, 확인된 사실과 추정을 구분합니다.
+"""
+
+    return """
+이번 글은 tech 트랙입니다.
+- 특정 회사 기술 블로그 하나를 요약하지 말고, 여러 자료를 묶어 넓은 기술 주제를 잡습니다.
+- 우선 주제: Kubernetes, 보안, 블록체인, 하네스/테스트 자동화, AI 에이전트, 인프라, 데이터베이스, 관측성.
+- 회사 글은 사례/근거로만 쓰고, 제목과 결론은 주제/쟁점/실무 판단 중심으로 둡니다.
+- 아키텍처, 운영 리스크, 대안, 도입 조건을 구체적으로 씁니다.
+"""
+
+
+def terminate_process_group(process: subprocess.Popen, grace_seconds: float = 5.0) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        process.wait(timeout=grace_seconds)
+
+
+def article_uid(article: dict) -> str:
+    raw = article.get("uid") or article.get("link") or article.get("title") or ""
+    return hashlib.sha256(str(raw).encode("utf-8")).hexdigest()[:16]
+
+
+def load_quality_history(limit: int = QUALITY_HISTORY_MAX_ROWS) -> list[dict]:
+    if not QUALITY_HISTORY_PATH.exists():
+        return []
+    rows: list[dict] = []
+    for line in QUALITY_HISTORY_PATH.read_text(encoding="utf-8").splitlines()[-limit:]:
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+def trim_quality_history() -> None:
+    if not QUALITY_HISTORY_PATH.exists():
+        return
+    lines = QUALITY_HISTORY_PATH.read_text(encoding="utf-8").splitlines()
+    if len(lines) <= QUALITY_HISTORY_MAX_ROWS and QUALITY_HISTORY_PATH.stat().st_size <= 5 * 1024 * 1024:
+        return
+    QUALITY_HISTORY_PATH.write_text("\n".join(lines[-QUALITY_HISTORY_MAX_ROWS:]) + "\n", encoding="utf-8")
+
+
+def append_quality_record(record: dict) -> None:
+    QUALITY_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with QUALITY_HISTORY_PATH.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    trim_quality_history()
+
+
+def normalize_issue_codes(evaluations: list[dict]) -> list[str]:
+    text = " ".join(
+        str(evaluation.get("reason", ""))
+        + " "
+        + " ".join(str(issue) for issue in evaluation.get("critical_issues", []))
+        for evaluation in evaluations
+    ).lower()
+    codes = [code for code, needles in ISSUE_CODE_RULES if any(needle.lower() in text for needle in needles)]
+    return codes[:5] or ["unclear_feedback"]
+
+
+def choose_quality_strategy(used_strategies: set[str] | None = None) -> str:
+    used = used_strategies or set()
+    rows = [row for row in load_quality_history() if row.get("track") == CURRENT_TRACK]
+    counts = {strategy: 0 for strategy in QUALITY_STRATEGIES}
+    rewards = {strategy: [] for strategy in QUALITY_STRATEGIES}
+    for row in rows:
+        strategy = row.get("strategy")
+        if strategy not in counts:
+            continue
+        counts[strategy] += 1
+        reward = row.get("reward_delta")
+        if isinstance(reward, (int, float)):
+            rewards[strategy].append(float(reward))
+
+    available = [strategy for strategy in QUALITY_STRATEGIES if strategy not in used] or list(QUALITY_STRATEGIES)
+    for strategy in available:
+        if counts[strategy] < 3:
+            return strategy
+    if random.random() < 0.2:
+        return random.choice(available)
+    return max(
+        available,
+        key=lambda strategy: sum(rewards[strategy]) / len(rewards[strategy]) if rewards[strategy] else 0.0,
+    )
+
+
+def build_quality_prompt_memory() -> str:
+    rows = [
+        row
+        for row in load_quality_history(QUALITY_MEMORY_MAX_ROWS * 4)
+        if row.get("track") == CURRENT_TRACK
+    ][-QUALITY_MEMORY_MAX_ROWS:]
+    if not rows:
+        return ""
+
+    failure_counts: dict[str, int] = {}
+    success_counts: dict[str, int] = {}
+    for row in rows:
+        scores = row.get("scores", {})
+        avg = float(scores.get("avg", 0.0) or 0.0)
+        if avg >= POST_MIN_SCORE:
+            strategy = str(row.get("strategy", ""))
+            if strategy:
+                success_counts[strategy] = success_counts.get(strategy, 0) + 1
+            continue
+        for code in row.get("issue_codes", []):
+            failure_counts[code] = failure_counts.get(code, 0) + 1
+
+    lines: list[str] = []
+    if failure_counts:
+        top_failures = sorted(failure_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+        lines.append("최근 같은 트랙에서 감점된 유형: " + ", ".join(f"{code}({count})" for code, count in top_failures))
+    if success_counts:
+        top_successes = sorted(success_counts.items(), key=lambda item: item[1], reverse=True)[:3]
+        lines.append("최근 통과 전략: " + ", ".join(f"{strategy}({count})" for strategy, count in top_successes))
+    return "\n".join(lines)[:QUALITY_MEMORY_MAX_CHARS]
+
+
+def build_quality_record(
+    run_id: str,
+    article: dict,
+    candidate: dict,
+    run_avg: float,
+    status: str,
+) -> dict:
+    scores = [float(evaluation.get("score", 0.0) or 0.0) for evaluation in candidate.get("evaluations", [])]
+    avg = float(candidate.get("score", 0.0) or 0.0)
+    return {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "track": CURRENT_TRACK,
+        "round": candidate.get("round"),
+        "variant": candidate.get("variant"),
+        "strategy": candidate.get("strategy"),
+        "source_uid": article_uid(article),
+        "candidate_hash": hashlib.sha256(candidate.get("body", "").encode("utf-8")).hexdigest()[:16],
+        "scores": {"avg": avg, "min": min(scores) if scores else 0.0, "per_judge": scores},
+        "run_avg": run_avg,
+        "reward_delta": avg - run_avg,
+        "issue_codes": normalize_issue_codes(candidate.get("evaluations", [])),
+        "status": status,
+        "elapsed_seconds": round(float(candidate.get("elapsed_seconds", 0.0) or 0.0), 2),
+        "saved_post_relpath": "",
+    }
+
+
+def post_structure() -> str:
+    if CURRENT_TRACK == "issue":
+        return """
+> **한 줄 요약** 글에서 말하고 싶은 핵심을 딱 한두 문장으로
+
+## 무슨 일이 있었나
+- 사건, 당사자, 날짜, 정책/제품/플랫폼 범위를 구체적으로 정리
+- 확인된 사실과 아직 추정인 해석을 분리
+
+## 왜 사람들이 반응했나
+- 커뮤니티가 불편해한 지점, 기대한 지점, 오해가 생긴 지점을 정리
+- 단순 찬반보다 신뢰, 권한, 비용, 사용성, 규제 리스크로 나눠 설명
+
+## 내가 보는 핵심
+- 이번 이슈를 하나의 원칙이나 반복되는 패턴으로 끌어올림
+- 과장하지 말고, 그래도 놓치면 안 되는 지점을 분명히 말함
+
+## 앞으로 볼 기준
+- 독자가 다음 뉴스를 볼 때 확인할 체크포인트
+- 결론은 첫 문단의 긴장을 회수하면서 여운 있게 마무리
+
+## 참고 자료
+- [선정 글감] 링크를 포함하고, 실제로 본문에 사용한 보조 레퍼런스만 추가
+"""
+
+    return """
+> **한 줄 요약** 글에서 말하고 싶은 핵심을 딱 한두 문장으로
+
+## 왜 지금 이슈인가
+- GitHub, Hacker News, 개발자 커뮤니티에서 말이 붙을 만한 배경
+- 단순 뉴스가 아니라 실무 문제와 어떻게 연결되는지
+
+## 커뮤니티에서 갈리는 지점
+- 찬성/반대, 기대/우려, 기존 방식과 새 방식의 차이를 정리
+- 특정 회사 관점으로 몰지 말고 여러 레퍼런스를 주제별로 엮을 것
+
+## 아키텍처 관점에서 볼 점
+- 시스템 설계, 데이터 흐름, 장애 격리, 성능, 운영 복잡도 관점으로 설명
+- 코드 스니펫 또는 Mermaid 다이어그램 포함 **[필수]**
+
+## 실무에서 볼 점
+- 도입 전에 확인할 조건, 트레이드오프, 실패하기 쉬운 지점
+- 비슷한 상황을 겪어본 경험이 있다면 과장 없이 자연스럽게 언급
+
+## 정리
+- 핵심 메시지를 간결하게 마무리
+- 독자가 당장 확인해볼 것 한 가지
+
+## 참고 자료
+- [선정 글감] 링크를 포함하고, 실제로 본문에 사용한 보조 레퍼런스만 추가
+"""
 
 
 def run_codex_prompt(prompt: str, task_name: str, timeout: int = CODEX_TIMEOUT_SECONDS) -> str:
@@ -150,33 +510,38 @@ def run_codex_prompt(prompt: str, task_name: str, timeout: int = CODEX_TIMEOUT_S
     env.setdefault("TERM", "dumb")
 
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             cmd,
-            input=wrapped_prompt,
-            capture_output=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             cwd=REPO_ROOT,
             env=env,
-            timeout=timeout,
+            start_new_session=True,
         )
-        if result.returncode != 0:
-            stderr_tail = result.stderr.strip()[-2000:]
-            stdout_tail = result.stdout.strip()[-2000:]
+        try:
+            stdout, stderr = process.communicate(wrapped_prompt, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            terminate_process_group(process)
+            raise RuntimeError(f"Codex {task_name} 시간이 초과됐습니다: {timeout}s") from exc
+
+        if process.returncode != 0:
+            stderr_tail = stderr.strip()[-2000:]
+            stdout_tail = stdout.strip()[-2000:]
             raise RuntimeError(
-                f"Codex {task_name} 실패(exit {result.returncode}). "
+                f"Codex {task_name} 실패(exit {process.returncode}). "
                 f"stderr={stderr_tail!r} stdout={stdout_tail!r}"
             )
 
         response = output_path.read_text(encoding="utf-8").strip()
         if not response:
-            response = result.stdout.strip()
+            response = stdout.strip()
         if not response:
             raise ValueError(f"Codex {task_name} empty response")
         return response
     except FileNotFoundError as exc:
         raise RuntimeError(f"Codex CLI를 찾지 못했습니다: {CODEX_BIN}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Codex {task_name} 시간이 초과됐습니다: {timeout}s") from exc
     finally:
         output_path.unlink(missing_ok=True)
 
@@ -229,6 +594,60 @@ def fetch_recent_articles(feeds: list[dict], hours: int = FETCH_WINDOW_HOURS) ->
     # 셔플로 항상 같은 기사가 상위에 오는 문제 방지
     random.shuffle(articles)
     log.info(f"✅ 총 {len(articles)}개 기사 수집 완료")
+    return articles
+
+
+def fetch_github_trending_articles() -> list[dict]:
+    """Collect repositories from GitHub Trending for issue track."""
+    if CURRENT_TRACK != "issue":
+        return []
+
+    try:
+        resp = requests.get("https://github.com/trending", headers=HEADERS, timeout=HTTP_TIMEOUT)
+        resp.raise_for_status()
+    except Exception as e:
+        log.warning(f" ⚠️ GitHub Trending 수집 실패: {e}")
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    now = datetime.now(tz=timezone.utc).isoformat()
+    articles: list[dict] = []
+
+    for rank, row in enumerate(soup.select("article.Box-row")[:10], start=1):
+        repo_link = row.select_one("h2 a")
+        if not repo_link:
+            continue
+
+        repo = _clean_text(repo_link.get_text(" ", strip=True)).replace(" / ", "/")
+        link = f"https://github.com{repo_link.get('href', '')}"
+        description = _clean_text(row.select_one("p").get_text(" ", strip=True)) if row.select_one("p") else ""
+        language = row.select_one("[itemprop=programmingLanguage]")
+        stars = row.select_one('a[href$="/stargazers"]')
+        today = row.select_one("span.d-inline-block.float-sm-right")
+        language_text = _clean_text(language.get_text(" ", strip=True)) if language else ""
+        stars_text = _clean_text(stars.get_text(" ", strip=True)) if stars else ""
+        today_text = _clean_text(today.get_text(" ", strip=True)) if today else ""
+
+        if repo and link:
+            articles.append(
+                {
+                    "source": "GitHub Trending",
+                    "title": f"#{rank} {repo}",
+                    "link": link,
+                    "summary": (
+                        f"description: {description}\n"
+                        f"language: {language_text}\n"
+                        f"stars: {stars_text}\n"
+                        f"today: {today_text}"
+                    ),
+                    "published": now,
+                    "tags": ["github", "trending", "open-source", language_text.lower()],
+                    "blog_category": "GitHub · 트렌딩",
+                    "uid": _uid(link),
+                }
+            )
+
+    log.info(f"✅ GitHub Trending {len(articles)}개 수집 완료")
     return articles
 
 
@@ -339,6 +758,17 @@ def _article_topic_priority(article: dict) -> tuple[int, str]:
     text = _article_signal_text(article)
     score = 0
 
+    if CURRENT_TRACK == "issue":
+        if source in TRACK_FEED_SOURCES["issue"]:
+            score += 8
+        if any(keyword in text for keyword in ISSUE_SIGNAL_KEYWORDS):
+            score += 5
+        if any(keyword in text for keyword in COMMUNITY_SIGNAL_KEYWORDS):
+            score += 3
+        if source in REFERENCE_ONLY_SOURCES and source not in TRACK_FEED_SOURCES["issue"]:
+            score -= 4
+        return score, article.get("published", "")
+
     if source in COMMUNITY_SIGNAL_SOURCES:
         score += 6
     if "github" in text:
@@ -357,6 +787,12 @@ def _article_signal_label(article: dict) -> str:
     source = article.get("source", "")
     text = _article_signal_text(article)
     labels: list[str] = []
+
+    if CURRENT_TRACK == "issue":
+        if source in TRACK_FEED_SOURCES["issue"]:
+            labels.append("issue-source")
+        if any(keyword in text for keyword in ISSUE_SIGNAL_KEYWORDS):
+            labels.append("issue")
 
     if source in COMMUNITY_SIGNAL_SOURCES:
         labels.append("community")
@@ -390,15 +826,19 @@ def select_best_article(articles: list[dict]) -> dict | None:
         for i, a in enumerate(candidates)
     )
 
-    prompt = f"""당신은 한국어 기술 블로그 편집자입니다.
-아래 RSS 후보를 검토하고, 단일 회사 블로그 요약이 아니라 **커뮤니티에서 이슈화된 기술 주제 1개**를 고르세요.
-선택된 항목은 글의 시작점일 뿐이며, 회사 블로그는 근거 자료로만 참고합니다.
+    prompt = f"""당신은 한국어 블로그 편집자입니다.
+{track_context()}
+
+{QUALITY_RUBRIC}
+
+아래 RSS 후보를 검토하고, 현재 트랙에 맞는 글감 1개를 고르세요.
+선택된 항목은 글의 시작점일 뿐이며, 원문은 근거 자료로만 참고합니다.
 
 선정 기준 (우선순위 순):
-1. GitHub, Hacker News, GeekNews, DEV, Stack Overflow 등 개발자 커뮤니티에서 말이 붙을 만한 주제
-2. 최근 아키텍처 변화, 오픈소스 릴리스/논쟁, 장애/보안/성능/런타임 변화
-3. 한국 개발자가 검색할 법한 키워드: "Kubernetes", "PostgreSQL", "Redis", "LLM infra", "CI/CD", "보안 취약점", "아키텍처"
-4. 회사 기술 블로그는 단독 홍보/요약감이면 낮게 평가하고, 커뮤니티 쟁점과 연결될 때만 선택
+1. 단일 기사 요약으로 끝나지 않고 하나의 관점으로 확장 가능한 주제
+2. 최근 커뮤니티, 업계, 개발자, 정책권에서 반응이 붙을 만한 변화
+3. 한국 독자가 검색할 법한 키워드가 분명한 주제
+4. 출처가 약하거나 홍보성만 강한 후보는 낮게 평가
 
 후보 목록:
 {bullets}
@@ -513,6 +953,40 @@ def _similarity_score(primary: dict, candidate: dict) -> int:
     )
 
 
+def _is_same_topic(primary: dict, candidate: dict) -> bool:
+    if article_uid(primary) == article_uid(candidate):
+        return True
+    if primary.get("link") and primary.get("link") == candidate.get("link"):
+        return True
+
+    primary_title_tokens = _tokenize_korean_english(primary.get("title", ""))
+    candidate_title_tokens = _tokenize_korean_english(candidate.get("title", ""))
+    if len(primary_title_tokens & candidate_title_tokens) >= 3:
+        return True
+
+    return _similarity_score(primary, candidate) >= 18
+
+
+def select_articles_for_run(articles: list[dict], count: int) -> list[dict]:
+    """Select multiple distinct topics for one run."""
+    selected: list[dict] = []
+    remaining = list(articles)
+
+    while remaining and len(selected) < count:
+        best = select_best_article(remaining)
+        if not best:
+            break
+
+        selected.append(best)
+        remaining = [
+            article
+            for article in remaining
+            if not any(_is_same_topic(chosen, article) for chosen in selected)
+        ]
+
+    return selected
+
+
 def select_supporting_articles_with_codex(primary: dict, candidates: list[dict]) -> list[dict]:
     if not candidates:
         return []
@@ -618,7 +1092,15 @@ def build_supporting_context(articles: list[dict]) -> str:
 # ─────────────────────────────────────────────
 # 5. Codex: 페르소나 기반 한국어 포스트 생성
 # ─────────────────────────────────────────────
-def generate_post(article: dict, body: str, supporting_context: str) -> str:
+def generate_post(
+    article: dict,
+    body: str,
+    supporting_context: str,
+    variant_index: int = 1,
+    total_variants: int = 1,
+    quality_feedback: str = "",
+    strategy: str = "community-first",
+) -> str:
     source_content = f"""[선정 글감 제목] {article['title']}
 [출처] {article['source']}
 [URL] {article['link']}
@@ -626,8 +1108,43 @@ def generate_post(article: dict, body: str, supporting_context: str) -> str:
 
 [선정 글감 내용]
 {body if body else "본문을 가져오지 못했습니다. 요약 내용을 기반으로 작성해주세요."}"""
+    variant_note = ""
+    if total_variants > 1:
+        variant_note = f"""
+이번 출력은 후보 {variant_index}/{total_variants}입니다.
+- 같은 자료에서 출발하되, 다른 후보와 제목감, 초반 긴장, 결론 관점을 다르게 잡으세요.
+- 억지로 튀지 말고, 95점 이상 평가를 받을 수 있는 가장 설득력 있는 한 가지 관점에 집중하세요.
+"""
+    feedback_note = ""
+    if quality_feedback:
+        feedback_note = f"""
+이전 라운드 judge 피드백입니다. 아래 문제를 본문 구조와 문장 안에서 직접 보완하세요.
+{quality_feedback}
+"""
 
-    persona_prompt = f"""여러 RSS 후보를 같은 기술 쟁점으로 읽고, Codex가 편집자처럼 하나의 한국어 기술 블로그 포스트로 재구성합니다.
+    memory = build_quality_prompt_memory()
+    memory_note = f"""
+품질 메모리(본문에 언급하지 말고 편집 판단에만 반영):
+{memory}
+
+""" if memory else ""
+    strategy_note = f"""
+이번 후보의 편집 전략: {strategy}
+- 이 전략명, judge, 점수, 이전 글, 피드백 같은 메타 표현은 본문에 쓰지 마세요.
+
+"""
+
+    persona_prompt = f"""{track_context()}
+
+{QUALITY_RUBRIC}
+{variant_note}
+{feedback_note}
+
+{memory_note}
+
+{strategy_note}
+
+여러 RSS 후보를 같은 트랙의 주제로 읽고, Codex가 편집자처럼 하나의 한국어 블로그 포스트로 재구성합니다.
 선정된 글감은 주제의 진입점일 뿐입니다. 회사 기술 블로그나 공식 문서는 주장 검증과 사례 보강에만 사용합니다.
 단일 기사 요약이 아니라, GitHub/개발자 커뮤니티에서 왜 말이 붙는지와 아키텍처적으로 무엇을 봐야 하는지를 중심으로 씁니다.
 
@@ -668,6 +1185,9 @@ def generate_post(article: dict, body: str, supporting_context: str) -> str:
 - 분량: **최소 2,500자** (깊이 있게 쓸 것)
 
 ━━━ 포스트 구조 ━━━
+{post_structure()}
+
+issue 트랙이면 아래 기술 글 기본 구조는 무시하세요. tech 트랙이면 아래 구조를 참고해도 됩니다.
 
 > **한 줄 요약** — 이 글에서 말하고 싶은 핵심을 딱 한두 문장으로
 
@@ -707,7 +1227,7 @@ def generate_post(article: dict, body: str, supporting_context: str) -> str:
 위 구조와 방식에 따라 포스트 **본문만** 출력하세요. 제목(title)은 포함하지 마세요."""
 
     try:
-        return run_codex_prompt(persona_prompt, "포스트 생성", timeout=CODEX_TIMEOUT_SECONDS)
+        return run_codex_prompt(persona_prompt, "포스트 생성", timeout=CANDIDATE_TIMEOUT_SECONDS)
     except Exception as e:
         log.error(f"포스트 생성 실패: {e}")
         raise
@@ -715,19 +1235,19 @@ def generate_post(article: dict, body: str, supporting_context: str) -> str:
 
 def humanize_post(body: str) -> str:
     """Apply the humanizer gate before any post is saved."""
-    prompt = f"""다음 마크다운 기술 블로그 초안을 humanizer 스킬 기준으로 교정하세요.
+    prompt = f"""다음 마크다운 블로그 초안을 humanizer 스킬 기준으로 교정하세요.
 
 규칙:
 - 의미, 코드블록, 링크, 표, 제목 구조는 보존
 - 과장된 의미 부여, 광고 문구, 막연한 출처, AI 단어, not only/but 패턴, 3개 나열 강박, em dash 남발, 굵은 글씨 남발, 이모지, 챗봇 말투, 지식 컷오프 문구, 뻔한 긍정 결론 제거
-- 문장은 실제 사람이 쓴 한국어 기술 블로그처럼 구체적으로 정리
+- 문장은 실제 사람이 쓴 한국어 블로그처럼 구체적으로 정리
 - 출력은 교정된 Markdown 본문만. frontmatter, 설명, 변경 요약은 쓰지 말 것
 
 [초안]
 {body}
 """
     try:
-        humanized = run_codex_prompt(prompt, "humanizer", timeout=CODEX_TIMEOUT_SECONDS)
+        humanized = run_codex_prompt(prompt, "humanizer", timeout=CANDIDATE_TIMEOUT_SECONDS)
         if not humanized:
             raise ValueError("empty humanizer response")
         return humanized
@@ -739,13 +1259,412 @@ def humanize_post(body: str) -> str:
 # ─────────────────────────────────────────────
 # 6. Hugo frontmatter + 파일 저장
 # ─────────────────────────────────────────────
+def generate_post_candidate(
+    article: dict,
+    body: str,
+    supporting_context: str,
+    variant_index: int,
+    total_variants: int,
+    quality_feedback: str = "",
+    strategy: str = "community-first",
+) -> dict:
+    started = time.monotonic()
+    log.info(f"✍️ 후보 {variant_index}/{total_variants} 작성 시작")
+    draft = generate_post(
+        article,
+        body,
+        supporting_context,
+        variant_index,
+        total_variants,
+        quality_feedback,
+        strategy,
+    )
+    log.info(f"🧹 후보 {variant_index}/{total_variants} humanizer 적용 시작")
+    return {
+        "variant": variant_index,
+        "strategy": strategy,
+        "body": humanize_post(draft),
+        "evaluations": [],
+        "score": 0.0,
+        "min_score": 0.0,
+        "elapsed_seconds": time.monotonic() - started,
+    }
+
+
+def parse_post_evaluation(raw: str, judge_index: int) -> dict:
+    json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not json_match:
+        raise ValueError("judge response did not contain JSON")
+    data = json.loads(json_match.group())
+    score = max(0.0, min(100.0, float(data.get("score", 0))))
+    blockers = data.get("blockers") or data.get("critical_issues", [])
+    if not isinstance(blockers, list):
+        blockers = [str(blockers)]
+    blockers = [str(blocker).strip() for blocker in blockers if str(blocker).strip()]
+    if blockers:
+        score = min(score, POST_MIN_SCORE - 1)
+    elif score < POST_MIN_SCORE:
+        score = POST_MIN_SCORE
+    critical_issues = data.get("critical_issues") or blockers
+    if not isinstance(critical_issues, list):
+        critical_issues = [str(critical_issues)]
+    top_3_fixes = data.get("top_3_fixes", [])
+    if not isinstance(top_3_fixes, list):
+        top_3_fixes = [str(top_3_fixes)]
+    do_not_change = data.get("do_not_change", [])
+    if not isinstance(do_not_change, list):
+        do_not_change = [str(do_not_change)]
+    minor_suggestions = data.get("minor_suggestions", [])
+    if not isinstance(minor_suggestions, list):
+        minor_suggestions = [str(minor_suggestions)]
+    raw_publishable = data.get("publishable", score >= POST_MIN_SCORE)
+    if isinstance(raw_publishable, str):
+        publishable = raw_publishable.strip().lower() in {"true", "yes", "1"}
+    else:
+        publishable = bool(raw_publishable)
+    publishable = publishable and not blockers
+    return {
+        "judge": judge_index,
+        "score": score,
+        "publishable": bool(publishable),
+        "blockers": blockers[:5],
+        "top_3_fixes": [str(item) for item in top_3_fixes[:3]],
+        "do_not_change": [str(item) for item in do_not_change[:3]],
+        "minor_suggestions": [str(item) for item in minor_suggestions[:5]],
+        "reason": str(data.get("reason", "")),
+        "critical_issues": [str(issue) for issue in critical_issues[:5]],
+    }
+
+
+def evaluate_post(article: dict, body: str, supporting_context: str, judge_index: int) -> dict:
+    prompt = f"""{track_context()}
+
+당신은 블로그 글 품질을 평가하는 독립 judge 에이전트 {judge_index}입니다.
+95점 이상은 완벽한 글이 아니라, 사람이 바로 게시해도 되는 수준입니다.
+선호 차이, 더 좋아질 여지, 사소한 문장 polish는 95점 미만 사유가 아닙니다.
+95점 미만을 주려면 게시를 막는 구체적 publish blocker를 blockers에 최소 1개 적어야 합니다.
+publish blocker가 없다면 score는 반드시 95점 이상이고 publishable은 true입니다.
+blockers는 사실 오류, 핵심 주장 검증 불가, 제목/본문 불일치, 구조 붕괴, 게시 품질 미달 문체, 출처가 필요한 핵심 주장 누락, 중복/환각/명백한 생성 흔적에만 씁니다.
+본문에는 frontmatter와 제목이 없으므로 제목/메타/슬러그 항목은 본문이 검색 의도와 제목 생성에 충분한지로 평가하세요.
+
+{QUALITY_RUBRIC}
+
+선정 글감:
+- 제목: {article['title']}
+- 출처: {article['source']}
+- URL: {article['link']}
+- 요약: {article['summary']}
+
+같은 주제 보조 레퍼런스:
+{supporting_context[:5000]}
+
+평가할 본문:
+{body}
+
+응답은 오직 JSON만 출력하세요.
+{{
+"score": 0,
+"publishable": false,
+"blockers": ["95점 미만이면 게시를 막는 구체적 결함. 없으면 빈 배열"],
+"top_3_fixes": ["blocker를 제거하고 점수를 올릴 가장 큰 수정 3개 이하"],
+"do_not_change": ["이미 좋은 부분 3개 이하"],
+"minor_suggestions": ["게시를 막지 않는 선택적 개선점"],
+"reason": "점수 근거를 한두 문장으로 요약",
+"critical_issues": ["기존 호환용. blockers와 같은 내용을 넣되 없으면 빈 배열"]
+}}"""
+    try:
+        raw = run_codex_prompt(prompt, f"judge {judge_index}", timeout=JUDGE_TIMEOUT_SECONDS)
+        return parse_post_evaluation(raw, judge_index)
+    except Exception as e:
+        log.warning(f"judge {judge_index} 평가 실패: {e}")
+        return {
+            "judge": judge_index,
+            "score": 0.0,
+            "reason": f"evaluation failed: {e}",
+            "critical_issues": ["judge evaluation failed"],
+        }
+
+
+def build_revision_feedback(candidate: dict) -> str:
+    feedback = build_quality_feedback(candidate)
+    score = float(candidate.get("score", 0.0) or 0.0)
+    body = str(candidate.get("body", "")).strip()
+    if score < POST_REVIEW_MIN_SCORE or not body:
+        return feedback
+
+    blockers: list[str] = []
+    top_fixes: list[str] = []
+    do_not_change: list[str] = []
+    minor_suggestions: list[str] = []
+    for evaluation in candidate.get("evaluations", []):
+        blockers.extend(str(item).strip() for item in evaluation.get("blockers", []) if str(item).strip())
+        top_fixes.extend(str(item).strip() for item in evaluation.get("top_3_fixes", []) if str(item).strip())
+        do_not_change.extend(str(item).strip() for item in evaluation.get("do_not_change", []) if str(item).strip())
+        minor_suggestions.extend(str(item).strip() for item in evaluation.get("minor_suggestions", []) if str(item).strip())
+
+    def compact(items: list[str], limit: int) -> str:
+        seen: set[str] = set()
+        unique: list[str] = []
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            unique.append(item)
+            if len(unique) >= limit:
+                break
+        return "\n".join(f"- {item}" for item in unique) or "- 없음"
+
+    return f"""이전 라운드 최고 초안은 평균 {score:.1f}점입니다.
+새 글을 처음부터 다시 쓰지 말고, 아래 초안을 유지하면서 publish blocker와 top fixes만 패치하세요.
+이미 좋은 부분은 보존하고, minor suggestion은 blocker 수정 후 문장이 어색할 때만 반영하세요.
+본문에는 judge, 점수, 이전 초안, 수정했다는 표현을 쓰지 마세요.
+
+[publish blockers]
+{compact(blockers, 5)}
+
+[top fixes]
+{compact(top_fixes, 3)}
+
+[do not change]
+{compact(do_not_change, 3)}
+
+[minor suggestions]
+{compact(minor_suggestions, 5)}
+
+[judge 피드백]
+{feedback}
+
+[이전 최고 초안]
+{body[:9000]}"""
+
+
+def build_quality_gated_post(article: dict, body: str, supporting_context: str) -> tuple[str, dict]:
+    log.info(
+        f"🧪 품질 게이트: 후보 {POST_VARIANTS}개, judge {POST_JUDGES}개, "
+        f"기준 {POST_MIN_SCORE:.1f}점, 최대 {POST_MAX_ROUNDS}라운드"
+    )
+    feedback = ""
+    best_overall: dict | None = None
+    run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{article_uid(article)}"
+
+    for round_index in range(1, POST_MAX_ROUNDS + 1):
+        log.info(f"🧪 품질 게이트 라운드 {round_index}/{POST_MAX_ROUNDS}")
+        previous_has_blockers = any(
+            evaluation.get("blockers")
+            for evaluation in (best_overall or {}).get("evaluations", [])
+        )
+        is_polish_round = (
+            round_index > 1
+            and best_overall is not None
+            and best_overall["score"] >= POST_POLISH_MIN_SCORE
+            and not previous_has_blockers
+        )
+        variant_count = POST_VARIANTS if round_index == 1 else (1 if is_polish_round else POST_REPAIR_VARIANTS)
+        if round_index > 1:
+            mode = "polish" if is_polish_round else "repair"
+            log.info(f"🔧 상위 초안 {mode} 라운드: 후보 {variant_count}개")
+        candidates: list[dict] = []
+        used_strategies: set[str] = set()
+        strategies_by_index: dict[int, str] = {}
+        for index in range(1, variant_count + 1):
+            strategy = choose_quality_strategy(used_strategies)
+            used_strategies.add(strategy)
+            strategies_by_index[index] = strategy
+        with ThreadPoolExecutor(max_workers=variant_count) as executor:
+            futures = {
+                executor.submit(
+                    generate_post_candidate,
+                    article,
+                    body,
+                    supporting_context,
+                    index,
+                    variant_count,
+                    feedback,
+                    strategies_by_index[index],
+                ): index
+                for index in range(1, variant_count + 1)
+            }
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    candidates.append(future.result())
+                    log.info(f"✅ 후보 {index}/{variant_count} 작성 완료")
+                except Exception as e:
+                    log.error(f"후보 {index}/{variant_count} 작성 실패: {e}")
+
+        if not candidates:
+            feedback = "이전 라운드는 모든 후보 작성에 실패했습니다. 더 짧고 안정적인 구조로 다시 작성하세요."
+            continue
+
+        max_workers = max(1, len(candidates) * POST_JUDGES)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(evaluate_post, article, candidate["body"], supporting_context, judge): candidate
+                for candidate in candidates
+                for judge in range(1, POST_JUDGES + 1)
+            }
+            for future in as_completed(futures):
+                candidate = futures[future]
+                candidate["evaluations"].append(future.result())
+
+        for candidate in candidates:
+            scores = [evaluation["score"] for evaluation in candidate["evaluations"]]
+            candidate["score"] = sum(scores) / len(scores) if scores else 0.0
+            candidate["min_score"] = min(scores) if scores else 0.0
+            candidate["round"] = round_index
+            score_text = ", ".join(f"{score:.1f}" for score in scores) or "none"
+            log.info(
+                f"🧪 후보 {round_index}-{candidate['variant']} 평가: "
+                f"평균 {candidate['score']:.1f}점 "
+                f"(judge: {score_text}, 최저 {candidate['min_score']:.1f}점)"
+            )
+
+        candidates.sort(key=lambda item: (item["score"], item["min_score"]), reverse=True)
+        best = candidates[0]
+        review_paths = save_review_candidates(article, candidates)
+        if review_paths:
+            log.info(f"🗂️ 라운드 {round_index} 수정 후보 {len(review_paths)}개 보존")
+
+        if best_overall is None or (best["score"], best["min_score"]) > (
+            best_overall["score"],
+            best_overall["min_score"],
+        ):
+            best_overall = best
+
+        run_avg = sum(candidate["score"] for candidate in candidates) / len(candidates)
+        for candidate in candidates:
+            status = "selected" if candidate is best and best["score"] >= POST_MIN_SCORE else "passed"
+            if candidate["score"] < POST_MIN_SCORE:
+                status = "failed"
+            try:
+                append_quality_record(build_quality_record(run_id, article, candidate, run_avg, status))
+            except Exception as exc:
+                log.warning(f"품질 기록 저장 실패: {exc}")
+
+        if best["score"] >= POST_MIN_SCORE:
+            log.info(
+                f"🏁 후보 {round_index}-{best['variant']} 선택: 평균 {best['score']:.1f}점"
+            )
+            return best["body"], best
+
+        feedback = build_revision_feedback(best)
+        log.warning(
+            f"⚠️ 라운드 {round_index} 최고 후보 {best['score']:.1f}점; "
+            "judge 피드백으로 다음 라운드 재작성"
+        )
+
+    if best_overall:
+        raise RuntimeError(
+            f"quality gate failed: best candidate scored {best_overall['score']:.1f}, "
+            f"required {POST_MIN_SCORE:.1f}. {build_quality_feedback(best_overall)}"
+        )
+    raise RuntimeError("all post variants failed")
+
+
+def build_quality_feedback(candidate: dict) -> str:
+    evaluations = candidate.get("evaluations") or []
+    if not evaluations:
+        return "judge 평가 결과가 없습니다. 단일 출처 의존, 근거 부족, 결론 약함을 우선 점검하세요."
+
+    lines: list[str] = []
+    for evaluation in evaluations:
+        judge = evaluation.get("judge", "?")
+        try:
+            score = float(evaluation.get("score", 0.0))
+        except (TypeError, ValueError):
+            score = 0.0
+
+        reason = str(evaluation.get("reason", "")).strip()
+        issues = evaluation.get("critical_issues") or []
+        if not isinstance(issues, list):
+            issues = [issues]
+        issue_text = "; ".join(str(issue).strip() for issue in issues if str(issue).strip())
+
+        parts = [f"judge {judge}: {score:.1f}점"]
+        if reason:
+            parts.append(f"근거: {reason}")
+        if issue_text:
+            parts.append(f"보완: {issue_text}")
+        lines.append(" / ".join(parts))
+
+    return "\n".join(f"- {line}" for line in lines)
+
+
+def save_review_candidate(article: dict, candidate: dict) -> Path:
+    REVIEW_DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(tz=kst)
+    date_prefix = now_kst.strftime("%Y-%m-%d")
+    base_slug = slugify(article.get("title", "")) or article_uid(article)
+    candidate_hash = hashlib.sha256(candidate["body"].encode("utf-8")).hexdigest()[:10]
+    filename = (
+        f"{date_prefix}-{base_slug[:42]}-"
+        f"r{candidate.get('round', 0)}v{candidate.get('variant', 0)}-{candidate_hash}.md"
+    )
+    filepath = REVIEW_DRAFTS_DIR / filename
+
+    feedback = build_quality_feedback(candidate)
+    content = f"""---
+draft_review: true
+track: {yaml_quote(CURRENT_TRACK)}
+score: {candidate.get('score', 0):.1f}
+min_score: {candidate.get('min_score', 0):.1f}
+round: {candidate.get('round', 0)}
+variant: {candidate.get('variant', 0)}
+strategy: {yaml_quote(candidate.get('strategy', ''))}
+source:
+  name: {yaml_quote(article.get('source', ''))}
+  url: {yaml_quote(article.get('link', ''))}
+  title: {yaml_quote(article.get('title', ''))}
+saved_at: {yaml_quote(now_kst.strftime("%Y-%m-%dT%H:%M:%S+09:00"))}
+---
+
+# 수정 후보: {article.get('title', '')}
+
+## Judge Feedback
+
+{feedback or '- judge feedback unavailable'}
+
+---
+
+{candidate["body"]}
+"""
+    filepath.write_text(content, encoding="utf-8")
+    log.info(f"🗂️ 90점 이상 수정 후보 저장: {filepath}")
+    return filepath
+
+
+def save_review_candidates(article: dict, candidates: list[dict]) -> list[Path]:
+    saved: list[Path] = []
+    seen_hashes: set[str] = set()
+
+    for candidate in candidates:
+        score = float(candidate.get("score", 0.0))
+        if not (POST_REVIEW_MIN_SCORE <= score < POST_MIN_SCORE):
+            continue
+
+        candidate_hash = hashlib.sha256(candidate["body"].encode("utf-8")).hexdigest()[:10]
+        if candidate_hash in seen_hashes:
+            continue
+        seen_hashes.add(candidate_hash)
+
+        saved.append(save_review_candidate(article, candidate))
+
+    return saved
+
+
 def build_title_and_slug(article: dict, body: str, supporting_context: str) -> dict:
-    prompt = f"""아래 선정 글감과 보조 레퍼런스를 함께 읽고, 최종 편집 주제에 맞는 다음 4가지를 JSON 형식으로 생성해주세요.
-**목표: 커뮤니티에서 이슈화된 기술 주제를 한국 개발자가 검색할 법한 제목으로 정리하세요.**
+    prompt = f"""{track_context()}
+
+{QUALITY_RUBRIC}
+
+아래 선정 글감과 보조 레퍼런스를 함께 읽고, 최종 편집 주제에 맞는 다음 4가지를 JSON 형식으로 생성해주세요.
+**목표: 현재 트랙에 맞는 주제를 한국 독자가 검색할 법한 제목으로 정리하세요.**
 
 1. **title**: 검색 노출에 최적화된 한국어 제목
-- 개발자가 실제로 검색할 법한 핵심 키워드를 제목 앞쪽에 배치
-- 회사명이나 원문 제목을 그대로 앞세우지 말고, 기술 쟁점과 아키텍처 관점을 제목에 반영
+- 독자가 실제로 검색할 법한 핵심 키워드를 제목 앞쪽에 배치
+- 회사명이나 원문 제목을 그대로 앞세우지 말고, 주제의 쟁점과 관점을 제목에 반영
 - 최대 40자, 구체적이고 명확하게 (예: "쿠버네티스 스케줄러 동작 원리 완전 정리")
 2. **slug**: 검색 노출을 위한 영문 SEO 슬러그
    - 소문자 + 하이픈만, 3~6단어, 핵심 기술 키워드 포함
@@ -881,9 +1800,54 @@ def _check_cooldown() -> None:
         log.warning(f"쿨다운 체크 실패 (무시하고 계속): {e}")
 
 
+def create_post_for_article(article: dict, articles: list[dict]) -> Path:
+    log.info(f"🧵 주제 작성 시작: [{article['source']}] {article['title']}")
+
+    # 5. 본문 크롤링
+    log.info(f"🌐 본문 크롤링: {article['link']}")
+    body_raw, cover_image = fetch_article_body(article["link"])
+    log.info(f"   추출 길이: {len(body_raw)}자 / 커버 이미지: {'O' if cover_image else 'X'}")
+
+    supporting_articles = select_supporting_articles(article, articles)
+    supporting_context = build_supporting_context(supporting_articles)
+    log.info(f"📚 보조 레퍼런스 {len(supporting_articles)}건 확보")
+    for supporting_article in supporting_articles:
+        log.info(f"  - [{supporting_article['source']}] {supporting_article['title']}")
+
+    # 6. 메타데이터 생성
+    log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
+    meta = build_title_and_slug(article, body_raw, supporting_context)
+    meta["cover_image"] = cover_image
+    log.info(f"📝 생성된 제목: {meta['title']}")
+    log.info(f"🔗 SEO 슬러그: {meta['slug']}")
+
+    # 7. 포스트 본문 생성
+    log.info("✍️  포스트 작성 중 (선정 글감 + 보조 레퍼런스 기반 전문 분석)...")
+    post_body, quality_result = build_quality_gated_post(article, body_raw, supporting_context)
+    log.info(
+        f"✅ 품질 게이트 통과: 후보 {quality_result['variant']} "
+        f"평균 {quality_result['score']:.1f}점"
+    )
+
+    # 9. 파일 저장
+    return save_post(meta, article, post_body)
+
+
 def main():
+    args = parse_args()
+    configure_track(args.track)
+
     model_label = f" ({CODEX_MODEL})" if CODEX_MODEL else ""
     log.info(f"🤖 Codex CLI 사용: {CODEX_BIN}{model_label}")
+    quality_variants_per_topic = POST_VARIANTS + max(0, POST_MAX_ROUNDS - 1) * POST_REPAIR_VARIANTS
+    max_quality_calls = TOPICS_PER_RUN * quality_variants_per_topic * (2 + POST_JUDGES)
+    log.info(
+        f"⚙️ 품질 설정: topics={TOPICS_PER_RUN}, variants={POST_VARIANTS}, "
+        f"repair_variants={POST_REPAIR_VARIANTS}, judges={POST_JUDGES}, "
+        f"rounds={POST_MAX_ROUNDS}, polish_min={POST_POLISH_MIN_SCORE:.1f}, "
+        f"candidate_timeout={CANDIDATE_TIMEOUT_SECONDS}s, "
+        f"judge_timeout={JUDGE_TIMEOUT_SECONDS}s, max_codex_calls≈{max_quality_calls + (TOPICS_PER_RUN * 3)}"
+    )
 
     # 0. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
     if not os.environ.get("FORCE_RUN"):
@@ -893,12 +1857,15 @@ def main():
     seen = load_seen()
 
     # 2. RSS 수집 (14일 윈도우)
-    feeds = load_feeds()
+    feeds = filter_feeds_for_track(load_feeds())
+    log.info(f"🧾 {CURRENT_TRACK} 트랙 피드: {len(feeds)}개")
     articles = fetch_recent_articles(feeds)
+    articles.extend(fetch_github_trending_articles())
 
     if not articles:
         log.warning("⚠️  최근 기사를 찾지 못했습니다. 윈도우를 28일로 확장합니다.")
         articles = fetch_recent_articles(feeds, hours=672)
+        articles.extend(fetch_github_trending_articles())
 
     # 3. 미처리 기사 필터링
     fresh = [a for a in articles if a["uid"] not in seen]
@@ -913,47 +1880,41 @@ def main():
             log.error("❌ RSS에서 수집된 기사가 없어 포스팅을 건너뜁니다.")
             sys.exit(0)
 
-    # 4. 최고 기사 선정 (셔플된 후보 풀에서)
-    best = select_best_article(fresh)
-    if not best:
+    # 4. 서로 다른 주제 선정 (셔플된 후보 풀에서)
+    selected_articles = select_articles_for_run(fresh, TOPICS_PER_RUN)
+    if not selected_articles:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
         sys.exit(1)
 
-    # 5. 본문 크롤링
-    log.info(f"🌐 본문 크롤링: {best['link']}")
-    body_raw, cover_image = fetch_article_body(best["link"])
-    log.info(f"   추출 길이: {len(body_raw)}자 / 커버 이미지: {'O' if cover_image else 'X'}")
+    log.info(f"🧵 이번 실행 선정 주제: {len(selected_articles)}개 / 목표 {TOPICS_PER_RUN}개")
+    saved_paths: list[Path] = []
+    failed_topics: list[str] = []
 
-    supporting_articles = select_supporting_articles(best, articles)
-    supporting_context = build_supporting_context(supporting_articles)
-    log.info(f"📚 보조 레퍼런스 {len(supporting_articles)}건 확보")
-    for article in supporting_articles:
-        log.info(f"  - [{article['source']}] {article['title']}")
+    for index, article in enumerate(selected_articles, start=1):
+        log.info(f"🧵 주제 {index}/{len(selected_articles)} 처리")
+        try:
+            saved_path = create_post_for_article(article, articles)
+        except Exception as exc:
+            failed_topics.append(f"[{article['source']}] {article['title']}: {exc}")
+            log.error(f"❌ 주제 {index}/{len(selected_articles)} 생성 실패: {exc}")
+            continue
 
-    # 6. 메타데이터 생성
-    log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
-    meta = build_title_and_slug(best, body_raw, supporting_context)
-    meta['cover_image'] = cover_image
-    log.info(f"📝 생성된 제목: {meta['title']}")
-    log.info(f"🔗 SEO 슬러그: {meta['slug']}")
+        saved_paths.append(saved_path)
+        seen.add(article["uid"])
+        save_seen(seen)
+        log.info(f"🎉 주제 {index}/{len(selected_articles)} 완료: {saved_path}")
+        print(f"CREATED_FILE={saved_path}")
 
-    # 7. 포스트 본문 생성
-    log.info("✍️  포스트 작성 중 (선정 글감 + 보조 레퍼런스 기반 전문 분석)...")
-    post_body = generate_post(best, body_raw, supporting_context)
+    if failed_topics:
+        log.warning("⚠️ 실패한 주제:")
+        for failed_topic in failed_topics:
+            log.warning(f"  - {failed_topic}")
 
-    # 8. humanizer 필수 적용
-    log.info("🧹 humanizer 스킬 적용 중...")
-    post_body = humanize_post(post_body)
+    if not saved_paths:
+        raise RuntimeError("all selected topics failed quality gate")
 
-    # 9. 파일 저장
-    saved_path = save_post(meta, best, post_body)
-
-    # 10. seen 캐시 업데이트
-    seen.add(best["uid"])
-    save_seen(seen)
-
-    log.info(f"🎉 완료! 생성된 파일: {saved_path}")
-    print(f"CREATED_FILE={saved_path}")
+    log.info(f"🎉 완료! 생성된 파일 {len(saved_paths)}개")
+    print("CREATED_FILES=" + ",".join(str(path) for path in saved_paths))
 
 
 if __name__ == "__main__":

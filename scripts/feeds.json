@@ -224,15 +224,119 @@
       "blog_category": "스타트업 · 비즈니스",
       "tags": ["startup", "funding", "vc", "product-launch", "business"]
     },
-    {
-      "name": "a16z Blog",
-      "url": "https://a16z.com/feed/",
-      "category": "vc-insights",
-      "blog_category": "스타트업 · 비즈니스",
-      "tags": ["a16z", "venture-capital", "startup", "market-trends", "ai"]
-    },
-    {
-      "name": "HashiCorp Blog",
+  {
+    "name": "a16z Blog",
+    "url": "https://a16z.com/feed/",
+    "category": "vc-insights",
+    "blog_category": "스타트업 · 비즈니스",
+    "tags": ["a16z", "venture-capital", "startup", "market-trends", "ai"]
+  },
+  {
+    "name": "WIRED AI",
+    "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+    "category": "ai-policy-news",
+    "blog_category": "AI · 사회 이슈",
+    "tags": ["ai", "policy", "platform", "regulation", "culture"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "WIRED Ideas",
+    "url": "https://www.wired.com/feed/category/ideas/latest/rss",
+    "category": "tech-culture-opinion",
+    "blog_category": "기술 문화",
+    "tags": ["tech-culture", "society", "policy", "platform", "opinion"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "WIRED Security",
+    "url": "https://www.wired.com/feed/category/security/latest/rss",
+    "category": "security-policy-news",
+    "blog_category": "보안 · 사회 이슈",
+    "tags": ["security", "privacy", "breach", "policy", "surveillance"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "MIT News AI",
+    "url": "https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml",
+    "category": "ai-research-news",
+    "blog_category": "AI · 사회 이슈",
+    "tags": ["ai", "research", "policy", "society", "mit"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "Reddit LocalLLaMA",
+    "url": "https://www.reddit.com/r/LocalLLaMA/.rss",
+    "category": "ai-community",
+    "blog_category": "AI · 커뮤니티",
+    "tags": ["reddit", "llm", "open-models", "ai-community"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "Reddit OpenAI",
+    "url": "https://www.reddit.com/r/OpenAI/.rss",
+    "category": "ai-community",
+    "blog_category": "AI · 커뮤니티",
+    "tags": ["reddit", "openai", "ai", "community"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "Reddit MachineLearning",
+    "url": "https://www.reddit.com/r/MachineLearning/.rss",
+    "category": "ai-research-community",
+    "blog_category": "AI · 커뮤니티",
+    "tags": ["reddit", "machine-learning", "research", "community"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "Reddit Technology",
+    "url": "https://www.reddit.com/r/technology/.rss",
+    "category": "tech-community",
+    "blog_category": "기술 · 커뮤니티",
+    "tags": ["reddit", "technology", "policy", "platform"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "Reddit Programming",
+    "url": "https://www.reddit.com/r/programming/.rss",
+    "category": "developer-community",
+    "blog_category": "개발 · 커뮤니티",
+    "tags": ["reddit", "programming", "developer", "community"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "YouTube Two Minute Papers",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
+    "category": "ai-video-community",
+    "blog_category": "AI · 유튜브",
+    "tags": ["youtube", "ai", "research", "video"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "YouTube AI Explained",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yFuUPtn21xtRbbw",
+    "category": "ai-video-community",
+    "blog_category": "AI · 유튜브",
+    "tags": ["youtube", "ai", "llm", "analysis"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "YouTube Computerphile",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC9-y-6csu5WGm29I7JiwpnA",
+    "category": "tech-video-community",
+    "blog_category": "기술 · 유튜브",
+    "tags": ["youtube", "computer-science", "security", "technology"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "YouTube Fireship",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
+    "category": "developer-video-community",
+    "blog_category": "개발 · 유튜브",
+    "tags": ["youtube", "developer", "programming", "web"],
+    "tracks": ["issue"]
+  },
+  {
+    "name": "HashiCorp Blog",
       "url": "https://www.hashicorp.com/blog/feed.xml",
       "category": "devops-tools",
       "blog_category": "DevOps · 자동화",

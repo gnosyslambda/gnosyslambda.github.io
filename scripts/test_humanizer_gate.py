@@ -17,20 +17,85 @@ source = Path(__file__).with_name("trend_writer.py").read_text(encoding="utf-8")
 tree = ast.parse(source)
 
 assert "def humanize_post" in source
+assert "def build_quality_gated_post" in source
+assert "def build_quality_feedback" in source
+assert "def build_revision_feedback" in source
+assert "def evaluate_post" in source
+assert "def parse_post_evaluation" in source
 assert "def run_codex_prompt" in source
+assert "QUALITY_RUBRIC" in source
+assert "POST_VARIANTS" in source
+assert "POST_REPAIR_VARIANTS" in source
+assert "POST_POLISH_MIN_SCORE" in source
+assert "POST_JUDGES" in source
+assert "TOPICS_PER_RUN" in source
+assert "POST_MIN_SCORE" in source
+assert "POST_REVIEW_MIN_SCORE" in source
+assert "POST_MAX_ROUNDS" in source
+assert "CANDIDATE_TIMEOUT_SECONDS" in source
+assert "JUDGE_TIMEOUT_SECONDS" in source
+assert "QUALITY_HISTORY_PATH" in source
+assert "def terminate_process_group" in source
+assert "def build_quality_prompt_memory" in source
+assert "def choose_quality_strategy" in source
+assert "def build_quality_record" in source
+assert "def select_articles_for_run" in source
+assert "def create_post_for_article" in source
+assert "def save_review_candidate" in source
+assert "def save_review_candidates" in source
+assert "local_drafts" in source
+assert "start_new_session=True" in source
+assert "candidate_hash" in source
+assert "saved_post_relpath" in source
+assert "ThreadPoolExecutor" in source
+assert "is_polish_round" in source
+assert "variant_count = POST_VARIANTS if round_index == 1 else (1 if is_polish_round else POST_REPAIR_VARIANTS)" in source
+assert "feedback = build_revision_feedback(best)" in source
+assert '"publishable"' in source
+assert '"blockers"' in source
+assert '"top_3_fixes"' in source
+assert "품질 게이트" in source
+assert "def parse_args" in source
+assert "def configure_track" in source
+assert "def filter_feeds_for_track" in source
+assert "def post_structure" in source
+assert "def fetch_github_trending_articles" in source
+assert "GitHub Trending" in source
+assert "articles.extend(fetch_github_trending_articles())" in source
+assert "fetch_github_issue_articles" not in source
+assert "GitHub Issues" not in source
+assert "api.github.com/repos" not in source
+assert "judge 피드백으로 다음 라운드 재작성" in source
 assert "humanizer 스킬 기준" in source
 assert "frontmatter, 설명, 변경 요약은 쓰지 말 것" in source
-assert "커뮤니티에서 이슈화된 기술 주제" in source
+assert "현재 트랙에 맞는 글감" in source
 assert "회사 기술 블로그나 공식 문서는 주장 검증과 사례 보강에만 사용" in source
-assert "대표 원문은 글의 중심축" not in source
+assert "issue 트랙" in source
+assert "tech 트랙" in source
+assert "대표 원문은 중심축" not in source
 assert "GEMINI" not in source
 assert "google.genai" not in source
 
-main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
-calls = [
-    _call_name(node.value.func)
-    for node in ast.walk(main)
-    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+post_creator = next(
+    node for node in tree.body
+    if isinstance(node, ast.FunctionDef) and node.name == "create_post_for_article"
+)
+creator_calls = [
+    _call_name(node.func)
+    for node in ast.walk(post_creator)
+    if isinstance(node, ast.Call)
 ]
 
-assert calls.index("generate_post") < calls.index("humanize_post") < calls.index("save_post")
+assert creator_calls.index("build_quality_gated_post") < creator_calls.index("save_post")
+
+candidate = next(
+    node for node in tree.body
+    if isinstance(node, ast.FunctionDef) and node.name == "generate_post_candidate"
+)
+candidate_calls = [
+    _call_name(node.func)
+    for node in ast.walk(candidate)
+    if isinstance(node, ast.Call)
+]
+
+assert candidate_calls.index("generate_post") < candidate_calls.index("humanize_post")

@@ -31,11 +31,11 @@ python trend_writer.py  # 로컬 Codex CLI 인증 필요
 ### 이중 파이프라인
 
 1. **배포 파이프라인** (`.github/workflows/deploy.yml`): `main` 푸시 시 Hugo 빌드 → GitHub Pages 배포
-2. **자동 포스트 생성** (Mac mini n8n): 8시간마다 `scripts/n8n_codex_blog_runner.py` 호출 → `scripts/trend_writer.py`가 해외 테크 블로그 RSS 수집 → Codex CLI로 한국어 기술 포스트 생성 → Hugo 빌드
+2. **자동 포스트 생성** (Mac mini n8n): `POST /run {"track":"issue"}`는 1시간마다 화제성 이슈 글감 확인, `POST /run {"track":"tech"}`는 6시간마다 넓은 기술 주제 글감 확인 → `scripts/trend_writer.py`가 트랙별 RSS 수집 → Codex CLI로 한국어 포스트 생성 → Hugo 빌드
 
 ### Trend Writer 처리 흐름
 
-`feeds.json`의 11개 RSS 소스 수집 → `.seen_articles.json`으로 중복 필터링 → Codex CLI로 기사 선정 → 원문 크롤링 → 보조 레퍼런스 선정 → Codex CLI로 한국어 기술 포스트 작성 → humanizer 게이트 → Hugo frontmatter 포함 마크다운 저장
+`feeds.json`의 트랙별 RSS 소스 수집 → 트랙별 seen cache로 중복 필터링 → Codex CLI로 글감 선정 → 원문 크롤링 → 보조 레퍼런스 선정 → Codex CLI로 한국어 포스트 작성 → humanizer 게이트 → Hugo frontmatter 포함 마크다운 저장
 
 ### 커스터마이제이션
 

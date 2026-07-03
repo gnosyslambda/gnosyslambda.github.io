@@ -13,3 +13,5 @@ resources/
 .venv/
 
 # Trend writer cache (tracked for GitHub Actions persistence)
+scripts/.quality_history*.jsonl
+local_drafts/
