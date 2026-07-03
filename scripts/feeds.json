@@ -148,6 +148,20 @@
       "tags": ["openai", "gpt", "llm", "ai-safety", "research"]
     },
     {
+      "name": "Anthropic News",
+      "url": "https://rsshub.bestblogs.dev/anthropic/news",
+      "category": "ai-research",
+      "blog_category": "AI · 머신러닝",
+      "tags": ["anthropic", "claude", "llm", "ai-safety", "research"]
+    },
+    {
+      "name": "Anthropic Engineering",
+      "url": "https://rsshub.bestblogs.dev/anthropic/engineering",
+      "category": "ai-engineering",
+      "blog_category": "AI · 머신러닝",
+      "tags": ["anthropic", "claude", "ai-engineering", "llm", "infrastructure"]
+    },
+    {
       "name": "Hugging Face Blog",
       "url": "https://huggingface.co/blog/feed.xml",
       "category": "ai-research",
@@ -167,6 +181,13 @@
       "category": "tech-community",
       "blog_category": "기술 트렌드",
       "tags": ["hackernews", "startup", "programming", "tech-discussion"]
+    },
+    {
+      "name": "Lobsters",
+      "url": "https://lobste.rs/rss",
+      "category": "developer-community",
+      "blog_category": "기술 트렌드",
+      "tags": ["lobsters", "programming", "open-source", "architecture", "security"]
     },
     {
       "name": "DEV Community",

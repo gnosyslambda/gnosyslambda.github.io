@@ -2,11 +2,11 @@
 """
 trend_writer.py
 ================
-해외 테크 블로그 RSS 피드를 수집하고, Gemini API를 통해
+해외 테크 블로그 RSS 피드를 수집하고, 로컬 Codex CLI를 통해
 14년 차 백엔드 개발자 시각의 한국어 포스트를 생성하는 스크립트.
 
 Usage:
-    GEMINI_API_KEY=<key> python scripts/trend_writer.py
+    python scripts/trend_writer.py
 """
 
 import os
@@ -16,6 +16,9 @@ import json
 import random
 import logging
 import hashlib
+import subprocess
+import tempfile
+import unicodedata
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -23,8 +26,6 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
-import google.genai as genai
-from google.genai import types as genai_types
 
 # ─────────────────────────────────────────────
 # 설정
@@ -42,14 +43,70 @@ FEEDS_PATH = SCRIPT_DIR / "feeds.json"
 POSTS_DIR = REPO_ROOT / "content" / "posts"
 SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
+CODEX_REASONING_EFFORT = os.environ.get("CODEX_REASONING_EFFORT", "medium")
+CODEX_TIMEOUT_SECONDS = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "900"))
 FETCH_WINDOW_HOURS = 336         # 최근 14일 기사 수집 (빅테크 블로그 발행 빈도 고려)
 MAX_ARTICLES_TO_SCORE = 20       # LLM 혁신도 평가 최대 기사 수
 MAX_BODY_CHARS = 10000           # 본문 최대 글자 수 (토큰 절약)
 HTTP_TIMEOUT = 15                # 요청 타임아웃(초)
-MAX_SUPPORTING_ARTICLES = 3      # 보조 레퍼런스로 붙일 추가 글 수
-MAX_SUPPORTING_BODY_CHARS = 2500 # 보조 글 본문 최대 길이
+MAX_SUPPORTING_ARTICLES = 5      # 비슷한 주제로 묶을 추가 글 수
+MAX_SUPPORTING_BODY_CHARS = 1800 # 보조 글 본문 최대 길이
+MIN_SUPPORTING_SCORE = 4         # 대표 글과 연결할 최소 관련도 점수
 SEEN_EXPIRE_DAYS = 60            # seen 항목 만료 기간 (60일 후 재선정 가능)
+TOPIC_STOPWORDS = {
+    "a", "an", "and", "any", "are", "as", "at", "be", "by", "enabling", "for", "from",
+    "get", "how", "in", "into", "is", "it", "more", "new", "now", "of", "on", "our",
+    "public", "the", "this", "to", "using", "we", "what", "with", "your",
+    "amazon", "aws", "blog", "cloud", "developer", "developers", "development", "devops",
+    "engineering", "infrastructure", "introducing", "june", "july", "roundup", "service",
+    "services", "support", "supports", "update", "updates", "weekly",
+    "개발", "기술", "블로그", "서비스", "인프라", "클라우드",
+}
+COMMUNITY_SIGNAL_SOURCES = {
+    "Hacker News Best",
+    "DEV Community",
+    "GeekNews",
+    "Lobsters",
+    "Stack Overflow Blog",
+    "GitHub Blog Engineering",
+}
+REFERENCE_ONLY_SOURCES = {
+    "Netflix Tech Blog",
+    "Uber Engineering",
+    "Meta Engineering",
+    "DoorDash Engineering",
+    "Google Developers",
+    "AWS Blog",
+    "LinkedIn Engineering",
+    "Airbnb Tech",
+    "Cloudflare Blog",
+    "Shopify Engineering",
+    "Stripe Blog",
+    "Discord Blog",
+    "Spotify Engineering",
+    "Pinterest Engineering",
+    "Slack Engineering",
+    "Twitter Engineering",
+    "Dropbox Tech",
+    "OpenAI Blog",
+    "Anthropic News",
+    "Anthropic Engineering",
+    "Hugging Face Blog",
+    "Databricks Blog",
+}
+COMMUNITY_SIGNAL_KEYWORDS = (
+    "github", "hn", "hacker news", "lobsters", "reddit", "discussion", "debate",
+    "issue", "issues", "proposal", "rfc", "incident", "outage", "postmortem",
+    "vulnerability", "cve", "exploit", "breaking change", "release", "fork",
+)
+ARCHITECTURE_SIGNAL_KEYWORDS = (
+    "architecture", "architectural", "distributed", "microservice", "monolith",
+    "database", "postgres", "mysql", "cache", "queue", "event", "streaming",
+    "kubernetes", "container", "runtime", "compiler", "observability", "security",
+    "scalability", "performance", "latency", "consistency", "migration",
+)
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -57,6 +114,71 @@ HEADERS = {
         "Chrome/123.0.0.0 Safari/537.36"
     )
 }
+
+
+def run_codex_prompt(prompt: str, task_name: str, timeout: int = CODEX_TIMEOUT_SECONDS) -> str:
+    """Run local Codex CLI and return only the final assistant message."""
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as output_file:
+        output_path = Path(output_file.name)
+
+    cmd = [
+        CODEX_BIN,
+        "exec",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "-C",
+        str(REPO_ROOT),
+        "--output-last-message",
+        str(output_path),
+        "--config",
+        f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
+    ]
+    if CODEX_MODEL:
+        cmd.extend(["--model", CODEX_MODEL])
+    cmd.append("-")
+
+    wrapped_prompt = f"""당신은 Mac mini에서 비대화형으로 실행되는 Codex 글쓰기 작업자입니다.
+파일을 수정하거나 명령을 실행하지 말고, 아래 요청의 최종 출력만 답하세요.
+
+{prompt}
+"""
+
+    env = os.environ.copy()
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            input=wrapped_prompt,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env=env,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            stderr_tail = result.stderr.strip()[-2000:]
+            stdout_tail = result.stdout.strip()[-2000:]
+            raise RuntimeError(
+                f"Codex {task_name} 실패(exit {result.returncode}). "
+                f"stderr={stderr_tail!r} stdout={stdout_tail!r}"
+            )
+
+        response = output_path.read_text(encoding="utf-8").strip()
+        if not response:
+            response = result.stdout.strip()
+        if not response:
+            raise ValueError(f"Codex {task_name} empty response")
+        return response
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Codex CLI를 찾지 못했습니다: {CODEX_BIN}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Codex {task_name} 시간이 초과됐습니다: {timeout}s") from exc
+    finally:
+        output_path.unlink(missing_ok=True)
 
 
 # ─────────────────────────────────────────────
@@ -89,15 +211,17 @@ def fetch_recent_articles(feeds: list[dict], hours: int = FETCH_WINDOW_HOURS) ->
             if pub_date and pub_date < cutoff:
                 continue  # 오래된 기사 스킵
 
+            title = _clean_text(entry.get("title", ""))
+            link = entry.get("link", "")
             article = {
                 "source": feed_name,
-                "title": entry.get("title", ""),
-                "link": entry.get("link", ""),
+                "title": title,
+                "link": link,
                 "summary": _clean_html(entry.get("summary", "")),
                 "published": pub_date.isoformat() if pub_date else "",
                 "tags": feed_meta.get("tags", []),
                 "blog_category": feed_meta.get("blog_category", "기술 블로그"),
-                "uid": _uid(entry.get("link", entry.get("title", ""))),
+                "uid": _uid(link or title),
             }
             if article["title"] and article["link"]:
                 articles.append(article)
@@ -124,7 +248,16 @@ def _parse_date(entry) -> datetime | None:
 def _clean_html(text: str) -> str:
     """HTML 태그 제거 후 plain text 반환."""
     soup = BeautifulSoup(text, "lxml")
-    return re.sub(r"\s+", " ", soup.get_text()).strip()[:800]
+    return _clean_text(soup.get_text())[:800]
+
+
+def _clean_text(text: str) -> str:
+    text = "".join(
+        char
+        for char in str(text)
+        if unicodedata.category(char) not in {"Cf", "Cc"}
+    )
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _uid(url: str) -> str:
@@ -135,6 +268,7 @@ def _tokenize_korean_english(text: str) -> set[str]:
     return {
         token.lower()
         for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-+.#]{1,}|[가-힣]{2,}", text)
+        if token.lower() not in TOPIC_STOPWORDS
     }
 
 
@@ -195,46 +329,90 @@ def _parse_ts(ts: str) -> datetime:
         return datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _article_signal_text(article: dict) -> str:
+    tags = " ".join(article.get("tags", []))
+    return f"{article.get('source', '')} {article.get('title', '')} {article.get('summary', '')} {tags}".lower()
+
+
+def _article_topic_priority(article: dict) -> tuple[int, str]:
+    source = article.get("source", "")
+    text = _article_signal_text(article)
+    score = 0
+
+    if source in COMMUNITY_SIGNAL_SOURCES:
+        score += 6
+    if "github" in text:
+        score += 4
+    if any(keyword in text for keyword in COMMUNITY_SIGNAL_KEYWORDS):
+        score += 3
+    if any(keyword in text for keyword in ARCHITECTURE_SIGNAL_KEYWORDS):
+        score += 3
+    if source in REFERENCE_ONLY_SOURCES:
+        score -= 2
+
+    return score, article.get("published", "")
+
+
+def _article_signal_label(article: dict) -> str:
+    source = article.get("source", "")
+    text = _article_signal_text(article)
+    labels: list[str] = []
+
+    if source in COMMUNITY_SIGNAL_SOURCES:
+        labels.append("community")
+    if "github" in text:
+        labels.append("github")
+    if any(keyword in text for keyword in ARCHITECTURE_SIGNAL_KEYWORDS):
+        labels.append("architecture")
+    if any(keyword in text for keyword in COMMUNITY_SIGNAL_KEYWORDS):
+        labels.append("discussion")
+    if source in REFERENCE_ONLY_SOURCES:
+        labels.append("reference")
+
+    return ", ".join(labels) if labels else "general"
+
+
 # ─────────────────────────────────────────────
-# 3. Gemini: 기사 혁신도 평가 → 최고 기사 선정
+# 3. Codex: 기사 혁신도 평가 → 최고 기사 선정
 # ─────────────────────────────────────────────
-def select_best_article(articles: list[dict], genai_client, model: str) -> dict | None:
+def select_best_article(articles: list[dict]) -> dict | None:
     if not articles:
         return None
 
-    # 랜덤 셔플 후 상위 N개만 평가 (항상 같은 기사 반복 방지)
-    candidates = articles[:MAX_ARTICLES_TO_SCORE]
+    # 커뮤니티/GitHub/아키텍처 신호가 있는 글감을 먼저 평가한다.
+    candidates = sorted(articles, key=_article_topic_priority, reverse=True)[:MAX_ARTICLES_TO_SCORE]
     bullets = "\n".join(
-        f"{i+1}. [{a['source']}] {a['title']}\n   요약: {a['summary'][:200]}"
+        (
+            f"{i+1}. [{a['source']}] {a['title']}\n"
+            f"  신호: {_article_signal_label(a)}\n"
+            f"  요약: {a['summary'][:260]}"
+        )
         for i, a in enumerate(candidates)
     )
 
-    prompt = f"""당신은 기술 블로그 SEO 전략가입니다.
-아래 해외 테크 블로그 기사 목록을 검토하고, 다음 기준에 따라 **가장 가치 있는 기사 1개**를 선정해주세요.
+    prompt = f"""당신은 한국어 기술 블로그 편집자입니다.
+아래 RSS 후보를 검토하고, 단일 회사 블로그 요약이 아니라 **커뮤니티에서 이슈화된 기술 주제 1개**를 고르세요.
+선택된 항목은 글의 시작점일 뿐이며, 회사 블로그는 근거 자료로만 참고합니다.
 
 선정 기준 (우선순위 순):
-1. **SEO 검색 수요**: 한국 개발자들이 구글/네이버에서 자주 검색하는 키워드와 연관된 주제
-   - 예: "MSA", "쿠버네티스", "AI 개발", "성능 최적화", "보안", "데이터베이스", "캐싱", "CI/CD"
-2. **실용적 깊이**: 개념 소개가 아닌 실제 구현/운영 사례가 있는 글
-3. **기술적 혁신성**: 새로운 아키텍처, 패턴, 접근법
-4. **백엔드 실무 관련성**: Java/Kotlin, Spring Boot, JVM 환경 적용 가능
+1. GitHub, Hacker News, GeekNews, DEV, Stack Overflow 등 개발자 커뮤니티에서 말이 붙을 만한 주제
+2. 최근 아키텍처 변화, 오픈소스 릴리스/논쟁, 장애/보안/성능/런타임 변화
+3. 한국 개발자가 검색할 법한 키워드: "Kubernetes", "PostgreSQL", "Redis", "LLM infra", "CI/CD", "보안 취약점", "아키텍처"
+4. 회사 기술 블로그는 단독 홍보/요약감이면 낮게 평가하고, 커뮤니티 쟁점과 연결될 때만 선택
 
-기사 목록:
+후보 목록:
 {bullets}
 
 응답 형식 (JSON만 출력, 다른 텍스트 없이):
 {{
   "selected_index": 1,
-  "reason": "선정 이유 (한국어, 2-3문장)",
+  "reason": "왜 지금 커뮤니티형 주제로 쓸 가치가 있는지 한국어로 2-3문장",
+  "topic_angle": "최종 글에서 잡을 쟁점/각도",
   "seo_keywords": ["검색될만한 핵심 키워드1", "키워드2", "키워드3"]
 }}"""
 
     try:
-        response = genai_client.models.generate_content(
-            model=model,
-            contents=prompt,
-        )
-        raw = response.text.strip()
+        raw = run_codex_prompt(prompt, "기사 선정", timeout=CODEX_TIMEOUT_SECONDS)
         json_match = re.search(r"\{.*\}", raw, re.DOTALL)
         if not json_match:
             log.warning("LLM 응답에서 JSON을 찾지 못했습니다.")
@@ -295,29 +473,119 @@ def _extract_cover_image(soup) -> str:
     return ""
 
 
-def select_supporting_articles(primary: dict, articles: list[dict]) -> list[dict]:
-    primary_tokens = _tokenize_korean_english(
-        f"{primary['title']} {primary['summary']} {' '.join(primary.get('tags', []))}"
+def _article_topic_text(article: dict) -> str:
+    return " ".join(
+        [
+            article.get("title", ""),
+            article.get("summary", ""),
+            article.get("category", ""),
+            article.get("blog_category", ""),
+            " ".join(article.get("tags", [])),
+        ]
     )
-    scored: list[tuple[int, dict]] = []
+
+
+def _similarity_score(primary: dict, candidate: dict) -> int:
+    primary_tokens = _tokenize_korean_english(_article_topic_text(primary))
+    candidate_tokens = _tokenize_korean_english(_article_topic_text(candidate))
+    if not primary_tokens or not candidate_tokens:
+        return 0
+
+    primary_title_tokens = _tokenize_korean_english(primary.get("title", ""))
+    candidate_title_tokens = _tokenize_korean_english(candidate.get("title", ""))
+    token_overlap = primary_tokens & candidate_tokens
+    title_overlap = primary_title_tokens & candidate_title_tokens
+    anchor_overlap = primary_title_tokens & candidate_tokens
+    primary_tags = {tag for tag in primary.get("tags", []) if tag.lower() not in TOPIC_STOPWORDS}
+    candidate_tags = {tag for tag in candidate.get("tags", []) if tag.lower() not in TOPIC_STOPWORDS}
+    tag_overlap = primary_tags & candidate_tags
+    different_source = primary.get("source") != candidate.get("source")
+
+    if not anchor_overlap:
+        return 0
+
+    return (
+        len(anchor_overlap) * 5
+        + len(title_overlap) * 6
+        + len(token_overlap) * 2
+        + len(tag_overlap) * 2
+        + (1 if different_source else 0)
+    )
+
+
+def select_supporting_articles_with_codex(primary: dict, candidates: list[dict]) -> list[dict]:
+    if not candidates:
+        return []
+
+    bullets = "\n".join(
+        (
+            f"{idx}. [{article['source']}] {article['title']}\n"
+            f"요약: {article['summary'][:350]}\n"
+            f"태그: {', '.join(article.get('tags', []))}"
+        )
+        for idx, article in enumerate(candidates, start=1)
+    )
+    prompt = f"""선정된 글감과 같은 커뮤니티/아키텍처 쟁점을 직접 보강할 레퍼런스를 고르세요.
+
+선정된 글감:
+- 제목: {primary['title']}
+- 출처: {primary['source']}
+- 요약: {primary['summary'][:500]}
+- 태그: {', '.join(primary.get('tags', []))}
+
+후보:
+{bullets}
+
+선정 기준:
+- GitHub/커뮤니티 논쟁, 릴리스, 장애, 보안, 성능, 아키텍처 변화와 직접 연결되는 글을 우선 고르세요.
+- 회사 블로그는 주장을 검증하거나 사례를 보강할 때만 선택하세요.
+- 같은 회사, 같은 클라우드, 같은 AI/개발 카테고리라는 이유만으로 고르지 마세요.
+- 선정된 글감의 핵심 기술 문제를 실제로 보강하거나 비교할 수 있는 글만 고르세요.
+- 관련성이 애매하면 과감히 제외하세요. 0개여도 됩니다.
+- 최대 {MAX_SUPPORTING_ARTICLES}개만 고르세요.
+
+응답 형식(JSON만 출력):
+{{
+  "selected_indexes": [1, 3],
+  "reason": "선정/제외 기준을 한 문장으로 설명"
+}}"""
+
+    try:
+        raw = run_codex_prompt(prompt, "보조 레퍼런스 선정", timeout=CODEX_TIMEOUT_SECONDS)
+        json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not json_match:
+            raise ValueError("JSON 응답을 찾지 못했습니다.")
+        data = json.loads(json_match.group())
+        selected_indexes = data.get("selected_indexes", [])
+        selected: list[dict] = []
+        for raw_idx in selected_indexes[:MAX_SUPPORTING_ARTICLES]:
+            try:
+                idx = int(raw_idx) - 1
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx < len(candidates):
+                selected.append(candidates[idx])
+        log.info(f"   보조 레퍼런스 선정 기준: {data.get('reason', '')}")
+        return selected
+    except Exception as e:
+        log.warning(f"보조 레퍼런스 Codex 선정 실패, 점수 기반 후보 사용: {e}")
+        return candidates[:MAX_SUPPORTING_ARTICLES]
+
+
+def select_supporting_articles(primary: dict, articles: list[dict]) -> list[dict]:
+    scored: list[tuple[int, str, dict]] = []
 
     for article in articles:
         if article["uid"] == primary["uid"]:
             continue
 
-        article_tokens = _tokenize_korean_english(
-            f"{article['title']} {article['summary']} {' '.join(article.get('tags', []))}"
-        )
-        overlap = len(primary_tokens & article_tokens)
-        source_bonus = 1 if article["source"] != primary["source"] else 0
-        freshness_bonus = 1 if article.get("published") else 0
-        score = overlap * 3 + source_bonus + freshness_bonus
+        score = _similarity_score(primary, article)
+        if score >= MIN_SUPPORTING_SCORE:
+            scored.append((score, article.get("published", ""), article))
 
-        if score > 0:
-            scored.append((score, article))
-
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return [article for _, article in scored[:MAX_SUPPORTING_ARTICLES]]
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    candidates = [article for _, _, article in scored[:20]]
+    return select_supporting_articles_with_codex(primary, candidates)
 
 
 def build_supporting_context(articles: list[dict]) -> str:
@@ -328,6 +596,7 @@ def build_supporting_context(articles: list[dict]) -> str:
     for idx, article in enumerate(articles, start=1):
         article_body, _ = fetch_article_body(article["link"])
         excerpt = article_body[:MAX_SUPPORTING_BODY_CHARS] if article_body else article["summary"]
+        tags = ", ".join(article.get("tags", [])) or "태그 없음"
         blocks.append(
             "\n".join(
                 [
@@ -335,6 +604,8 @@ def build_supporting_context(articles: list[dict]) -> str:
                     f"제목: {article['title']}",
                     f"출처: {article['source']}",
                     f"URL: {article['link']}",
+                    f"카테고리: {article.get('blog_category', article.get('category', ''))}",
+                    f"태그: {tags}",
                     f"요약: {article['summary']}",
                     f"발췌: {excerpt or '본문 확보 실패'}",
                 ]
@@ -345,23 +616,32 @@ def build_supporting_context(articles: list[dict]) -> str:
 
 
 # ─────────────────────────────────────────────
-# 5. Gemini: 페르소나 기반 한국어 포스트 생성
+# 5. Codex: 페르소나 기반 한국어 포스트 생성
 # ─────────────────────────────────────────────
-def generate_post(article: dict, body: str, supporting_context: str, genai_client, model: str) -> str:
-    source_content = f"""[원문 제목] {article['title']}
+def generate_post(article: dict, body: str, supporting_context: str) -> str:
+    source_content = f"""[선정 글감 제목] {article['title']}
 [출처] {article['source']}
-[원문 URL] {article['link']}
+[URL] {article['link']}
 [요약] {article['summary']}
 
-[원문 내용]
+[선정 글감 내용]
 {body if body else "본문을 가져오지 못했습니다. 요약 내용을 기반으로 작성해주세요."}"""
 
-    persona_prompt = f"""해외 테크 블로그 기사를 읽고, 이를 바탕으로 기술 블로그 포스트를 씁니다.
-단순 번역이 아니라, 원문 내용을 이해한 뒤 자신의 언어로 풀어쓰고 실무적 시각을 녹여낸 글입니다.
+    persona_prompt = f"""여러 RSS 후보를 같은 기술 쟁점으로 읽고, Codex가 편집자처럼 하나의 한국어 기술 블로그 포스트로 재구성합니다.
+선정된 글감은 주제의 진입점일 뿐입니다. 회사 기술 블로그나 공식 문서는 주장 검증과 사례 보강에만 사용합니다.
+단일 기사 요약이 아니라, GitHub/개발자 커뮤니티에서 왜 말이 붙는지와 아키텍처적으로 무엇을 봐야 하는지를 중심으로 씁니다.
+
+중요:
+- 선정된 글감 하나만 요약하는 글처럼 쓰지 말 것
+- 보조 레퍼런스가 있으면 최소 2개 이상을 본문 논지에 실제로 연결할 것
+- 회사 블로그는 사례/근거 위치로만 두고, 글의 제목과 결론을 회사 중심으로 잡지 말 것
+- 보조 레퍼런스가 없거나 관련성이 약하면 억지로 꾸며내지 말고 커뮤니티 쟁점 중심으로 쓸 것
+- "A 기사에서는..., B 기사에서는..." 식의 목록 나열보다, 주제별로 편집해서 자연스럽게 엮을 것
+- 겹치는 주장, 다른 관점, 실무에서 확인해야 할 지점을 분리해서 편집할 것
 
 ━━━ 글쓰기 방식 ━━━
-1. **원문 내용 충실히 전달**: 핵심 개념, 수치, 사례는 정확하게 소화해서 설명
-2. **나만의 시각 추가**: 원문을 읽고 든 생각, 실무에서 겪을 법한 유사 상황, 동의하거나 의문을 가진 부분을 자연스럽게 녹임
+1. **쟁점 내용 충실히 전달**: 선정된 글감과 보조 레퍼런스의 핵심 개념, 수치, 사례는 정확하게 소화해서 설명
+2. **나만의 시각 추가**: 자료 묶음을 읽고 든 생각, 실무에서 겪을 법한 유사 상황, 동의하거나 의문을 가진 부분을 자연스럽게 녹임
 3. **실무 관점 코멘트**: "실제로 이런 상황에서는", "현업에서 비슷한 고민을 하다 보면" 같은 자연스러운 코멘트 삽입 — 나이/연차/회사 이름은 절대 언급하지 말 것
 4. **코드/다이어그램**: 원문 코드가 있으면 포함. 없으면 개념을 설명하는 Mermaid 다이어그램 1개 직접 작성
 
@@ -391,63 +671,82 @@ def generate_post(article: dict, body: str, supporting_context: str, genai_clien
 
 > **한 줄 요약** — 이 글에서 말하고 싶은 핵심을 딱 한두 문장으로
 
-## 이 주제를 꺼낸 이유
-- 왜 이 기사가 눈에 들어왔는지, 어떤 문제의식과 연결되는지
-- 독자가 왜 읽어야 하는지
+## 왜 지금 이슈인가
+- GitHub, Hacker News, 개발자 커뮤니티에서 말이 붙을 만한 배경
+- 단순 뉴스가 아니라 실무 문제와 어떻게 연결되는지
 
-## 핵심 내용 정리
-- 원문의 주요 내용을 내 언어로 풀어서 설명
+## 커뮤니티에서 갈리는 지점
+- 찬성/반대, 기대/우려, 기존 방식과 새 방식의 차이를 정리
+- 특정 회사 관점으로 몰지 말고 여러 레퍼런스를 주제별로 엮을 것
+
+## 아키텍처 관점에서 볼 점
+- 시스템 설계, 데이터 흐름, 장애 격리, 성능, 운영 복잡도 관점으로 설명
 - 코드 스니펫 또는 Mermaid 다이어그램 포함 **[필수]**
-- 복잡한 개념은 단계별로 쪼개서
 
-## 내 생각 & 실무 관점
-- 원문을 읽고 든 생각, 동의하는 부분과 의문이 드는 부분
-- 비슷한 상황을 겪어본 경험이 있다면 자연스럽게 언급
-- 이 접근법의 트레이드오프와 실제 도입 시 주의할 점
+## 실무에서 볼 점
+- 도입 전에 확인할 조건, 트레이드오프, 실패하기 쉬운 지점
+- 비슷한 상황을 겪어본 경험이 있다면 과장 없이 자연스럽게 언급
 
 ## 정리
 - 핵심 메시지를 간결하게 마무리
-- 독자가 당장 해볼 수 있는 것, 생각해볼 것 한 가지
+- 독자가 당장 확인해볼 것 한 가지
 
 ## 참고 자료
-- [원문] [{article['title']}]({article['link']}) — {article['source']}
-- 보조 레퍼런스에서 실제로 활용한 링크를 `- [관련] 제목 — 출처` 형식으로 추가 (활용하지 않았으면 생략)
+- [선정 글감] [{article['title']}]({article['link']}) — {article['source']}
+- 보조 레퍼런스에서 실제로 활용한 링크를 `- [관련] 제목 — 출처` 형식으로 추가
+- 보조 레퍼런스가 없으면 관련 링크를 추가하지 말 것
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[보조 레퍼런스]
+[같은 주제 보조 레퍼런스]
 {supporting_context}
 
-[원문]
+[선정 글감]
 {source_content}
 
 위 구조와 방식에 따라 포스트 **본문만** 출력하세요. 제목(title)은 포함하지 마세요."""
 
     try:
-        response = genai_client.models.generate_content(
-            model=model,
-            contents=persona_prompt,
-            config=genai_types.GenerateContentConfig(
-                temperature=0.80,
-                max_output_tokens=8192,
-            ),
-        )
-        return response.text.strip()
+        return run_codex_prompt(persona_prompt, "포스트 생성", timeout=CODEX_TIMEOUT_SECONDS)
     except Exception as e:
         log.error(f"포스트 생성 실패: {e}")
+        raise
+
+
+def humanize_post(body: str) -> str:
+    """Apply the humanizer gate before any post is saved."""
+    prompt = f"""다음 마크다운 기술 블로그 초안을 humanizer 스킬 기준으로 교정하세요.
+
+규칙:
+- 의미, 코드블록, 링크, 표, 제목 구조는 보존
+- 과장된 의미 부여, 광고 문구, 막연한 출처, AI 단어, not only/but 패턴, 3개 나열 강박, em dash 남발, 굵은 글씨 남발, 이모지, 챗봇 말투, 지식 컷오프 문구, 뻔한 긍정 결론 제거
+- 문장은 실제 사람이 쓴 한국어 기술 블로그처럼 구체적으로 정리
+- 출력은 교정된 Markdown 본문만. frontmatter, 설명, 변경 요약은 쓰지 말 것
+
+[초안]
+{body}
+"""
+    try:
+        humanized = run_codex_prompt(prompt, "humanizer", timeout=CODEX_TIMEOUT_SECONDS)
+        if not humanized:
+            raise ValueError("empty humanizer response")
+        return humanized
+    except Exception as e:
+        log.error(f"humanizer 적용 실패: {e}")
         raise
 
 
 # ─────────────────────────────────────────────
 # 6. Hugo frontmatter + 파일 저장
 # ─────────────────────────────────────────────
-def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> dict:
-    prompt = f"""아래 해외 기술 블로그 원문을 기반으로 다음 4가지를 JSON 형식으로 생성해주세요.
-**목표: 한국 개발자가 구글/네이버 검색 시 상위 노출될 수 있도록 SEO를 최우선으로 고려하세요.**
+def build_title_and_slug(article: dict, body: str, supporting_context: str) -> dict:
+    prompt = f"""아래 선정 글감과 보조 레퍼런스를 함께 읽고, 최종 편집 주제에 맞는 다음 4가지를 JSON 형식으로 생성해주세요.
+**목표: 커뮤니티에서 이슈화된 기술 주제를 한국 개발자가 검색할 법한 제목으로 정리하세요.**
 
 1. **title**: 검색 노출에 최적화된 한국어 제목
-   - 개발자가 실제로 검색할 법한 핵심 키워드를 제목 앞쪽에 배치
-   - 최대 40자, 구체적이고 명확하게 (예: "쿠버네티스 스케줄러 동작 원리 완전 정리")
+- 개발자가 실제로 검색할 법한 핵심 키워드를 제목 앞쪽에 배치
+- 회사명이나 원문 제목을 그대로 앞세우지 말고, 기술 쟁점과 아키텍처 관점을 제목에 반영
+- 최대 40자, 구체적이고 명확하게 (예: "쿠버네티스 스케줄러 동작 원리 완전 정리")
 2. **slug**: 검색 노출을 위한 영문 SEO 슬러그
    - 소문자 + 하이픈만, 3~6단어, 핵심 기술 키워드 포함
 3. **keywords**: 이 글로 유입될 수 있는 검색 키워드 7~10개
@@ -456,8 +755,13 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
 4. **description**: 검색 결과 스니펫에 노출될 메타 설명 (1~2문장, 160자 이내)
    - 핵심 키워드 자연스럽게 포함, 클릭을 유도하는 문장
 
-기사 제목: {article['title']}
-기사 요약: {article['summary'][:300]}
+선정 글감 제목: {article['title']}
+선정 글감 요약: {article['summary'][:300]}
+선정 글감 일부:
+{body[:2500]}
+
+같은 주제 보조 레퍼런스:
+{supporting_context[:2500]}
 
 응답 형식 (오직 JSON만 출력):
 {{
@@ -467,8 +771,7 @@ def build_title_and_slug(article: dict, body: str, genai_client, model: str) -> 
   "description": "검색 스니펫용 설명..."
 }}"""
     try:
-        response = genai_client.models.generate_content(model=model, contents=prompt)
-        raw = response.text.strip()
+        raw = run_codex_prompt(prompt, "메타데이터 생성", timeout=CODEX_TIMEOUT_SECONDS)
         json_match = re.search(r"\{.*\}", raw, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
@@ -499,6 +802,10 @@ def slugify(text: str) -> str:
     return text.strip("-")[:60]
 
 
+def yaml_quote(value: object) -> str:
+    return json.dumps("" if value is None else str(value), ensure_ascii=False)
+
+
 def save_post(meta: dict, article: dict, body: str) -> Path:
     POSTS_DIR.mkdir(parents=True, exist_ok=True)
     kst = timezone(timedelta(hours=9))
@@ -518,22 +825,23 @@ def save_post(meta: dict, article: dict, body: str) -> Path:
         filepath = POSTS_DIR / f"{date_prefix}-{slug}-{counter}.md"
         counter += 1
 
-    tags_yaml = "\n".join(f'  - "{t}"' for t in build_tags(article, meta.get("keywords", [])))
+    tags_yaml = "\n".join(f"  - {yaml_quote(t)}" for t in build_tags(article, meta.get("keywords", [])))
+    description = meta.get("description", article["summary"][:150])
     frontmatter = f"""---
-date: '{date_str}'
+date: {yaml_quote(date_str)}
 draft: false
-title: '{title.replace("'", "''")}'
+title: {yaml_quote(title)}
 tags:
 {tags_yaml}
 categories:
-  - "{article.get('blog_category', '기술 블로그')}"
-description: "{meta.get('description', article['summary'][:150]).replace('"', "'")}"
+  - {yaml_quote(article.get('blog_category', '기술 블로그'))}
+description: {yaml_quote(description)}
 source:
-  name: "{article.get('source', '')}"
-  url: "{article.get('link', '')}"
-  title: "{article.get('title', '').replace('"', "'")}"
+  name: {yaml_quote(article.get('source', ''))}
+  url: {yaml_quote(article.get('link', ''))}
+  title: {yaml_quote(article.get('title', ''))}
 cover:
-  image: "{meta.get('cover_image', '')}"
+  image: {yaml_quote(meta.get('cover_image', ''))}
   alt: "Cover image"
   relative: false
 showToc: true
@@ -574,14 +882,8 @@ def _check_cooldown() -> None:
 
 
 def main():
-    if not GEMINI_API_KEY:
-        log.error("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
-        sys.exit(1)
-
-    genai_client = genai.Client(api_key=GEMINI_API_KEY)
-
-    flash_model_name = "gemini-3-flash-preview"
-    pro_model_name = "gemini-3-flash-preview"
+    model_label = f" ({CODEX_MODEL})" if CODEX_MODEL else ""
+    log.info(f"🤖 Codex CLI 사용: {CODEX_BIN}{model_label}")
 
     # 0. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
     if not os.environ.get("FORCE_RUN"):
@@ -612,7 +914,7 @@ def main():
             sys.exit(0)
 
     # 4. 최고 기사 선정 (셔플된 후보 풀에서)
-    best = select_best_article(fresh, genai_client, flash_model_name)
+    best = select_best_article(fresh)
     if not best:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
         sys.exit(1)
@@ -622,25 +924,31 @@ def main():
     body_raw, cover_image = fetch_article_body(best["link"])
     log.info(f"   추출 길이: {len(body_raw)}자 / 커버 이미지: {'O' if cover_image else 'X'}")
 
-    supporting_articles = select_supporting_articles(best, fresh)
+    supporting_articles = select_supporting_articles(best, articles)
     supporting_context = build_supporting_context(supporting_articles)
     log.info(f"📚 보조 레퍼런스 {len(supporting_articles)}건 확보")
+    for article in supporting_articles:
+        log.info(f"  - [{article['source']}] {article['title']}")
 
     # 6. 메타데이터 생성
     log.info("📝 메타데이터(제목, 슬러그, 커스텀 SEO 키워드) 생성 중...")
-    meta = build_title_and_slug(best, body_raw, genai_client, flash_model_name)
+    meta = build_title_and_slug(best, body_raw, supporting_context)
     meta['cover_image'] = cover_image
     log.info(f"📝 생성된 제목: {meta['title']}")
     log.info(f"🔗 SEO 슬러그: {meta['slug']}")
 
     # 7. 포스트 본문 생성
-    log.info("✍️  포스트 작성 중 (원문 + 보조 레퍼런스 기반 전문 분석)...")
-    post_body = generate_post(best, body_raw, supporting_context, genai_client, pro_model_name)
+    log.info("✍️  포스트 작성 중 (선정 글감 + 보조 레퍼런스 기반 전문 분석)...")
+    post_body = generate_post(best, body_raw, supporting_context)
 
-    # 8. 파일 저장
+    # 8. humanizer 필수 적용
+    log.info("🧹 humanizer 스킬 적용 중...")
+    post_body = humanize_post(post_body)
+
+    # 9. 파일 저장
     saved_path = save_post(meta, best, post_body)
 
-    # 9. seen 캐시 업데이트
+    # 10. seen 캐시 업데이트
     seen.add(best["uid"])
     save_seen(seen)
 

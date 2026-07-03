@@ -1,9 +1,6 @@
-name: Trend Writer — 8-Hour Tech Insight Post
+name: Trend Writer — Manual Codex Post
 
 on:
-  schedule:
-    # 8시간마다 실행 (UTC 0, 8, 16시 → KST 9, 17, 1시)
-    - cron: '0 0,8,16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -55,7 +52,6 @@ jobs:
       - name: Generate tech insight post
         id: generate
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FORCE_RUN: ${{ github.event.inputs.force }}
         run: |
           set -uo pipefail
@@ -104,7 +100,7 @@ jobs:
           git commit -m "feat: 해외 테크 블로그 번역 포스트 발행 (${KST_DATE})
 
           - 파일: ${FILENAME}
-          - 자동 생성: trend_writer.py + Gemini
+          - 자동 생성: trend_writer.py + Codex
           - 해외 기술 블로그 번역·큐레이션"
           
           git push origin main
