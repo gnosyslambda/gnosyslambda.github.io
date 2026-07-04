@@ -6,9 +6,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import signal
 import socketserver
 import subprocess
+import tempfile
 import threading
 import urllib.parse
 import urllib.request
@@ -30,6 +32,7 @@ PYTHON_BIN = os.environ.get("BLOG_RUNNER_PYTHON", str(VENV_DIR / "bin" / "python
 HUGO_BIN = os.environ.get("BLOG_RUNNER_HUGO", "/opt/homebrew/bin/hugo")
 PUBLISH_BRANCH = os.environ.get("BLOG_RUNNER_PUBLISH_BRANCH", "main")
 VALID_TRACKS = {"issue", "tech"}
+ENV_FILE = Path(os.environ.get("BLOG_RUNNER_ENV_FILE", str(Path.home() / ".config" / "blog-runner" / "env")))
 
 _lock = threading.Lock()
 
@@ -68,11 +71,24 @@ def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[s
     handler.wfile.write(data)
 
 
-def _run_step(name: str, command: list[str], env: dict[str, str]) -> dict[str, Any]:
+def _load_env_file(env: dict[str, str]) -> None:
+    if not ENV_FILE.exists():
+        return
+    for raw_line in ENV_FILE.read_text(errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key and not env.get(key):
+            env[key] = value.strip().strip("'\"")
+
+
+def _run_step(name: str, command: list[str], env: dict[str, str], cwd: Path = REPO_ROOT) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc).isoformat()
     process = subprocess.Popen(
         command,
-        cwd=REPO_ROOT,
+        cwd=cwd,
         env=env,
         text=True,
         stdout=subprocess.PIPE,
@@ -217,18 +233,35 @@ def _telegram_chat_id(token: str, env: dict[str, str]) -> str:
     raise RuntimeError("TELEGRAM_CHAT_ID missing and no Telegram updates found; send /start to the bot first")
 
 
-def _send_telegram_notification(track: str, paths: list[str], env: dict[str, str]) -> dict[str, Any]:
-    started_at = datetime.now(timezone.utc).isoformat()
+def _send_telegram_text(text: str, env: dict[str, str]) -> None:
     token = env.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
-        return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 1, "startedAt": started_at, "stdoutTail": "", "stderrTail": "TELEGRAM_BOT_TOKEN missing"}
-
-    text = _blog_alert(track, True, paths)
+        raise RuntimeError("TELEGRAM_BOT_TOKEN missing")
     data = urllib.parse.urlencode({"chat_id": _telegram_chat_id(token, env), "text": text})
     request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data.encode("utf-8"))
     with urllib.request.urlopen(request, timeout=15) as response:
         response.read()
+
+
+def _send_telegram_notification(track: str, paths: list[str], env: dict[str, str]) -> dict[str, Any]:
+    started_at = datetime.now(timezone.utc).isoformat()
+    text = _blog_alert(track, True, paths)
+    try:
+        _send_telegram_text(text, env)
+    except Exception as exc:
+        return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 1, "startedAt": started_at, "stdoutTail": "", "stderrTail": exc.__class__.__name__}
     return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 0, "startedAt": started_at, "stdoutTail": text, "stderrTail": ""}
+
+
+def _copy_publish_files(publish_paths: list[str], publish_worktree: Path) -> None:
+    for rel in publish_paths:
+        source = REPO_ROOT / rel
+        target = publish_worktree / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, target)
 
 
 def _publish_blog_changes(track: str, paths: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
@@ -237,35 +270,76 @@ def _publish_blog_changes(track: str, paths: list[str], env: dict[str, str]) -> 
     message = f"feat: publish n8n blog posts ({timestamp})"
     body = f"- track: {track}\n- files: {', '.join(publish_paths)}"
     steps = []
-    commands = [
-        ("git configure bot", ["git", "config", "user.name", "n8n Blog Runner"]),
-        ("git configure email", ["git", "config", "user.email", "bot@gnosyslambda.github.io"]),
-        ("git fetch main", ["git", "fetch", "origin", f"{PUBLISH_BRANCH}:refs/remotes/origin/{PUBLISH_BRANCH}"]),
-        ("verify fast-forward publish", ["git", "merge-base", "--is-ancestor", f"origin/{PUBLISH_BRANCH}", "HEAD"]),
-        ("stage published files", ["git", "add", "--", *publish_paths]),
-    ]
-    for name, command in commands:
-        step = _run_step(name, command, env)
-        steps.append(step)
-        if step["exitCode"] != 0:
+    temp_dir = Path(tempfile.mkdtemp(prefix="blog-runner-publish-"))
+    worktree_created = False
+    try:
+        for name, command in [
+            ("git fetch publish branch", ["git", "fetch", "origin", f"refs/heads/{PUBLISH_BRANCH}:refs/remotes/origin/{PUBLISH_BRANCH}"]),
+            ("create publish worktree", ["git", "worktree", "add", "--detach", str(temp_dir), f"origin/{PUBLISH_BRANCH}"]),
+        ]:
+            step = _run_step(name, command, env)
+            steps.append(step)
+            if step["exitCode"] != 0:
+                return steps
+            if name == "create publish worktree":
+                worktree_created = True
+
+        started_at = datetime.now(timezone.utc).isoformat()
+        try:
+            _copy_publish_files(publish_paths, temp_dir)
+        except Exception as exc:
+            steps.append({
+                "name": "copy publish files",
+                "command": ["copy", *publish_paths],
+                "exitCode": 1,
+                "startedAt": started_at,
+                "stdoutTail": "",
+                "stderrTail": exc.__class__.__name__,
+            })
             return steps
-    check = _run_step("check staged changes", ["git", "diff", "--cached", "--quiet"], env)
-    steps.append(check)
-    if check["exitCode"] == 0:
-        return steps
-    if check["exitCode"] == 1:
-        check["exitCode"] = 0
-        check["stdoutTail"] = "staged changes present"
-    else:
-        return steps
-    for name, command in [
-        ("commit published files", ["git", "commit", "-m", message, "-m", body]),
-        ("push published files", ["git", "push", "origin", f"HEAD:{PUBLISH_BRANCH}"]),
-    ]:
-        step = _run_step(name, command, env)
-        steps.append(step)
-        if step["exitCode"] != 0:
+        steps.append({
+            "name": "copy publish files",
+            "command": ["copy", *publish_paths],
+            "exitCode": 0,
+            "startedAt": started_at,
+            "stdoutTail": f"copied {len(publish_paths)} files",
+            "stderrTail": "",
+        })
+
+        for name, command in [
+            ("git configure publish bot", ["git", "config", "user.name", "n8n Blog Runner"]),
+            ("git configure publish email", ["git", "config", "user.email", "bot@gnosyslambda.github.io"]),
+            ("build publish worktree", [HUGO_BIN, "--minify"]),
+            ("stage published files", ["git", "add", "--", *publish_paths]),
+        ]:
+            step = _run_step(name, command, env, cwd=temp_dir)
+            steps.append(step)
+            if step["exitCode"] != 0:
+                return steps
+
+        check = _run_step("check staged changes", ["git", "diff", "--cached", "--quiet"], env, cwd=temp_dir)
+        steps.append(check)
+        if check["exitCode"] == 0:
             return steps
+        if check["exitCode"] == 1:
+            check["exitCode"] = 0
+            check["stdoutTail"] = "staged changes present"
+        else:
+            return steps
+
+        for name, command in [
+            ("commit published files", ["git", "commit", "-m", message, "-m", body]),
+            ("push published files", ["git", "push", "origin", f"HEAD:{PUBLISH_BRANCH}"]),
+        ]:
+            step = _run_step(name, command, env, cwd=temp_dir)
+            steps.append(step)
+            if step["exitCode"] != 0:
+                return steps
+    finally:
+        if worktree_created:
+            subprocess.run(["git", "worktree", "remove", "--force", str(temp_dir)], cwd=REPO_ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        else:
+            shutil.rmtree(temp_dir, ignore_errors=True)
     return steps
 
 
@@ -282,6 +356,7 @@ def run_blog_job(
         return 409, {"ok": False, "error": "blog runner is already running"}
 
     env = os.environ.copy()
+    _load_env_file(env)
     env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")
     env["BLOG_TRACK"] = track
     if force:
@@ -362,6 +437,36 @@ class BlogRunnerHandler(BaseHTTPRequestHandler):
         _json_response(self, 200, {"ok": True, "service": "n8n-codex-blog-runner"})
 
     def do_POST(self) -> None:
+        if self.path == "/notify":
+            if TOKEN and self.headers.get("X-Blog-Runner-Token") != TOKEN:
+                _json_response(self, 401, {"ok": False, "error": "unauthorized"})
+                return
+
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw_body = self.rfile.read(length).decode("utf-8") if length else ""
+            try:
+                body = json.loads(raw_body) if raw_body else {}
+            except json.JSONDecodeError:
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+
+            text = str(body.get("text") or "").strip()
+            if not text:
+                _json_response(self, 400, {"ok": False, "error": "text is required"})
+                return
+
+            env = os.environ.copy()
+            _load_env_file(env)
+            try:
+                _send_telegram_text(text, env)
+            except Exception as exc:
+                _json_response(self, 502, {"ok": False, "error": "telegram send failed", "errorType": exc.__class__.__name__})
+                return
+
+            _json_response(self, 200, {"ok": True})
+            return
+
         if self.path != "/run":
             _json_response(self, 404, {"ok": False, "error": "not found"})
             return
