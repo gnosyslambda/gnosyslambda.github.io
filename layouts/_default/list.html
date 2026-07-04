@@ -68,9 +68,11 @@
       </div>
       <h3 class="recent-post-name">{{ .Title }}</h3>
       <p class="recent-post-desc">{{ .Description | truncate 80 }}</p>
+      {{- if (.Param "ShowReadingTime") }}
       <div class="recent-post-reading">
-        <span>{{ .ReadingTime }}min read</span>
+        <span>{{ i18n "read_time" .ReadingTime | default (printf "%d min" .ReadingTime) }}</span>
       </div>
+      {{- end }}
     </a>
     {{- end }}
   </div>
