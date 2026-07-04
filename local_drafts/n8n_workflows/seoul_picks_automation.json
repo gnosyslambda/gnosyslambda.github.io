@@ -1,0 +1,177 @@
+{
+    "id": "seoul-picks-ranking-publish-hourly",
+    "name": "Seoul Picks - Ranking Publish Hourly",
+    "active": true,
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                -120
+            ]
+        },
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 0 9-22 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "seoul-publish-hourly",
+            "name": "Hourly 09-22 - Seoul Picks",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.3,
+            "position": [
+                0,
+                80
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://host.docker.internal:8771/run",
+                "sendBody": true,
+                "contentType": "json",
+                "specifyBody": "json",
+                "jsonBody": "={{ (() => { const categories = ['Skincare','Makeup','K-Food','Lifestyle','K-Tech','K-Entertainment','Korea Travel','K-Culture']; const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', hour12: false }).formatToParts(new Date()); const rawHour = Number(parts.find((part) => part.type === 'hour')?.value || '9'); const hour = rawHour === 24 ? 0 : rawHour; const index = ((hour - 9) % categories.length + categories.length) % categories.length; return JSON.stringify({ track: 'seoul-picks', force: false, topicsPerRun: 1, variants: 1, judges: 1, minScore: 95, reviewMinScore: 90, dryRun: false, publish: true, sendToBlogger: true, isDraft: false, category: categories[index] }); })() }}",
+                "options": {
+                    "timeout": 3600000,
+                    "response": {
+                        "response": {
+                            "neverError": true
+                        }
+                    }
+                }
+            },
+            "id": "run-seoul-picks",
+            "name": "Run Seoul Picks Automation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                320,
+                -20
+            ],
+            "onError": "continueRegularOutput",
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 15000
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json || {};\nconst workflowName = \"Seoul Picks - Ranking Publish Hourly\";\nconst blogName = \"Seoul Picks \ub7ad\ud0b9\";\nconst blogType = \"seoul\";\nconst blogBaseUrl = \"https://seoul-picks.blogspot.com\";\nconst quietStartHour = 23;\nconst quietEndHour = 9;\n\nfunction compact(value, fallback = '') {\n  if (value === undefined || value === null || value === '') return fallback;\n  if (typeof value === 'object') return JSON.stringify(value).replace(/\\s+/g, ' ').trim();\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\nfunction clip(value, limit = 260) {\n  const text = compact(value);\n  if (!text) return '';\n  return text.length > limit ? text.slice(0, limit - 1).trimEnd() + '\u2026' : text;\n}\n\nfunction asArray(value) {\n  return Array.isArray(value) ? value : [];\n}\n\nfunction firstText(values, fallback = '') {\n  for (const value of values) {\n    const text = compact(value);\n    if (text) return text;\n  }\n  return fallback;\n}\n\nfunction formatScore(value) {\n  if (value === undefined || value === null || value === '') return '';\n  const number = Number(value);\n  if (Number.isFinite(number)) return number.toFixed(1).replace(/\\.0$/, '') + '\uc810';\n  const text = compact(value);\n  return text.includes('\uc810') ? text : text + '\uc810';\n}\n\nfunction alertLineValue(label) {\n  const alert = String(data.alert || '');\n  const match = alert.match(new RegExp('^' + label + ':\\\\s*(.+)$', 'm'));\n  return match ? compact(match[1]) : '';\n}\n\nfunction filename(path) {\n  return compact(path).split('/').pop().replace(/\\.md$/i, '');\n}\n\nfunction titleFromPath(path) {\n  const slug = filename(path).replace(/^\\d{4}-\\d{2}-\\d{2}-/, '');\n  return slug ? slug.replace(/-/g, ' ') : '';\n}\n\nfunction gnosysUrl(path) {\n  const text = compact(path);\n  if (!text) return '';\n  if (/^https?:\\/\\//i.test(text)) return text;\n  const slug = filename(text);\n  return slug ? blogBaseUrl.replace(/\\/$/, '') + '/posts/' + slug + '/' : '';\n}\n\nfunction cleanUrl(url) {\n  return compact(url).replace(/[\\]})>,.]+$/g, '');\n}\n\nfunction collectUrls(value, out = []) {\n  if (value === undefined || value === null) return out;\n  if (typeof value === 'string') {\n    const matches = value.match(/https?:\\/\\/[^\\s\"'<>]+/g) || [];\n    for (const match of matches) {\n      const url = cleanUrl(match);\n      if (url && !out.includes(url)) out.push(url);\n    }\n    return out;\n  }\n  if (Array.isArray(value)) {\n    for (const item of value) collectUrls(item, out);\n    return out;\n  }\n  if (typeof value === 'object') {\n    for (const item of Object.values(value)) collectUrls(item, out);\n  }\n  return out;\n}\n\nfunction preferredBlogspotUrl() {\n  return collectUrls(data).find((url) => url.includes('seoul-picks.blogspot.com')) || '';\n}\n\nfunction alertPosts() {\n  const posts = [];\n  let current = null;\n  for (const rawLine of String(data.alert || '').split('\\n')) {\n    const line = rawLine.trim();\n    const title = line.match(/^\\d+\\.\\s+(.+)$/);\n    if (title) {\n      if (current) posts.push(current);\n      current = { title: compact(title[1]) };\n      continue;\n    }\n    if (!current) continue;\n    const summary = line.match(/^\uc694\uc57d:\\s*(.+)$/);\n    const file = line.match(/^\ud30c\uc77c:\\s*(.+)$/);\n    if (summary) current.summary = compact(summary[1]);\n    if (file) current.path = compact(file[1]);\n  }\n  if (current) posts.push(current);\n  return posts;\n}\n\nfunction writerPosts() {\n  const writer = data.writer || {};\n  const topics = asArray(writer.topics);\n  const selected = asArray(writer.selected);\n  const revisions = asArray(writer.revisionCandidates);\n  const picked = selected.length ? selected : revisions;\n  return picked.map((item, index) => {\n    const topic = topics[index] || topics[0] || {};\n    return {\n      title: firstText([item.title, topic.title]),\n      summary: firstText([item.summary, item.description, topic.summary, topic.description]),\n      score: item.score,\n      topicScore: item.topicScore !== undefined ? item.topicScore : topic.topic_score,\n      source: firstText([item.source, topic.url]),\n      path: firstText([item.path, asArray(data.createdFiles)[index]]),\n      url: firstText([item.url, item.postUrl]),\n    };\n  });\n}\n\nfunction filePosts() {\n  return asArray(data.createdFiles).map((path) => ({\n    title: titleFromPath(path),\n    path,\n  }));\n}\n\nfunction allPosts() {\n  const posts = writerPosts();\n  if (posts.length) return posts;\n  const fromAlert = alertPosts();\n  if (fromAlert.length) return fromAlert;\n  const fromFiles = filePosts();\n  if (fromFiles.length) return fromFiles;\n  return [{ title: firstText([data.title, alertLineValue('\ub0b4\uc6a9'), alertLineValue('\uc81c\ubaa9')], '\uc81c\ubaa9 \ud655\uc778 \ud544\uc694') }];\n}\n\nfunction postUrl(post) {\n  const direct = firstText([post.url, data.url, data.post && data.post.url]);\n  if (direct && /^https?:\\/\\//i.test(direct)) return direct;\n  if (blogType === 'gnosys') return gnosysUrl(post.path || asArray(data.createdFiles)[0]);\n  if (blogType === 'seoul') return preferredBlogspotUrl();\n  return '';\n}\n\nfunction scoreText(post) {\n  const parts = [];\n  const main = formatScore(post.score !== undefined ? post.score : data.score);\n  if (main) parts.push(main);\n  const topic = formatScore(post.topicScore !== undefined ? post.topicScore : data.topicScore);\n  if (topic) parts.push('\uc8fc\uc81c ' + topic);\n  if (parts.length) return parts.join(' / ');\n  const fromAlert = alertLineValue('\uc810\uc218');\n  if (fromAlert && !fromAlert.includes('\uc5c6\uc74c') && !fromAlert.includes('\uc218\uc9d1')) return fromAlert;\n  return '';\n}\n\nfunction summaryText(posts) {\n  const summaries = [];\n  for (const [index, post] of posts.entries()) {\n    const text = clip(post.summary || post.description, posts.length > 1 ? 180 : 260);\n    if (text) summaries.push(posts.length > 1 ? `${index + 1}. ${text}` : text);\n  }\n  if (summaries.length) return summaries.join('\\n');\n  const fallback = firstText([\n    alertLineValue('\uc694\uc57d'),\n    asArray(data.writer && data.writer.topics)[0] && asArray(data.writer && data.writer.topics)[0].summary,\n  ]);\n  return clip(fallback, 260);\n}\n\nfunction failingStep() {\n  const failed = asArray(data.steps).find((step) => Number(step.exitCode) !== 0);\n  return firstText([data.failedStep, data.step, failed && failed.name], '\ud655\uc778 \ud544\uc694');\n}\n\nfunction errorText() {\n  const failed = asArray(data.steps).find((step) => Number(step.exitCode) !== 0) || {};\n  const candidates = [\n    data.error && data.error.message,\n    data.error,\n    data.message,\n    data.description,\n    alertLineValue('\uc624\ub958'),\n    failed.stderrTail,\n    failed.stdoutTail,\n    data.statusMessage,\n  ];\n  for (const value of candidates) {\n    const text = clip(value, 320);\n    if (text) return text;\n  }\n  return 'runner \uc751\ub2f5\uc774 \uc0dd\uc131\ub418\uae30 \uc804\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4.';\n}\n\nfunction kstHour() {\n  const parts = new Intl.DateTimeFormat('en-US', {\n    timeZone: 'Asia/Seoul',\n    hour: '2-digit',\n    hour12: false,\n  }).formatToParts(new Date());\n  const raw = Number(parts.find((part) => part.type === 'hour')?.value || '0');\n  return raw === 24 ? 0 : raw;\n}\n\nconst ok = data.ok === true;\nconst collectOnly = data.collectOnly === true;\nconst hour = kstHour();\nconst quietHours = hour >= quietStartHour || hour < quietEndHour;\nconst shouldNotify = !quietHours && !(ok && collectOnly);\n\nif (ok && collectOnly) {\n  const lines = [\n    '[n8n] \ud6c4\ubcf4 \uc218\uc9d1 \uc644\ub8cc',\n    `\ube14\ub85c\uadf8: ${blogName}`,\n    `\ud6c4\ubcf4: ${data.candidateCount ?? '\ud655\uc778 \ud544\uc694'}\uac1c`,\n  ];\n  return [{ json: { ...data, alert: lines.join('\\n'), shouldNotify, quietHours, quietWindow: '23:00-08:59 KST' } }];\n}\n\nif (!ok) {\n  const lines = [\n    '[n8n] \ubc1c\ud589 \uc2e4\ud328',\n    `\ube14\ub85c\uadf8: ${blogName}`,\n    `\uc791\uc5c5: ${workflowName}`,\n    `\ub2e8\uacc4: ${failingStep()}`,\n    `\uc624\ub958: ${errorText()}`,\n  ];\n  return [{ json: { ...data, alert: lines.join('\\n'), shouldNotify, quietHours, quietWindow: '23:00-08:59 KST' } }];\n}\n\nconst posts = allPosts();\nconst titleLines = posts.map((post, index) => `${index + 1}. ${clip(post.title || titleFromPath(post.path), 120)}`).join('\\n');\nconst score = scoreText(posts[0]);\nconst summary = summaryText(posts);\nconst links = posts.map(postUrl).filter(Boolean);\nconst uniqueLinks = [...new Set(links)];\nconst lines = [\n  '[n8n] \ubc1c\ud589 \uc644\ub8cc',\n  `\ube14\ub85c\uadf8: ${blogName}`,\n  '',\n  '\uc81c\ubaa9',\n  titleLines,\n];\nif (summary) lines.push('', '\uc694\uc57d', summary);\nif (score) lines.push('', `\uc810\uc218: ${score}`);\nif (uniqueLinks.length) lines.push('', '\ub9c1\ud06c', uniqueLinks.join('\\n'));\n\nreturn [{ json: { ...data, alert: lines.join('\\n'), shouldNotify, quietHours, quietWindow: '23:00-08:59 KST' } }];\n"
+            },
+            "id": "build-alert",
+            "name": "Build Alert",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                560,
+                -20
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json || {};\nif (data.shouldNotify === false) {\n  return [];\n}\nreturn [{ json: data }];"
+            },
+            "id": "notify-gate",
+            "name": "Notify Gate",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                760,
+                -20
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+                "sendBody": true,
+                "contentType": "json",
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: $json.alert || '[n8n] alert missing' }) }}",
+                "options": {
+                    "timeout": 60000
+                }
+            },
+            "id": "notify-telegram",
+            "name": "Notify Telegram",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                980,
+                -20
+            ],
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 5000
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Run Seoul Picks Automation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Run Seoul Picks Automation": {
+            "main": [
+                [
+                    {
+                        "node": "Build Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Alert": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Notify Gate": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Telegram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Hourly 09-22 - Seoul Picks": {
+            "main": [
+                [
+                    {
+                        "node": "Run Seoul Picks Automation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {},
+    "pinData": {}
+}

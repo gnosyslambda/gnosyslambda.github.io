@@ -14,4 +14,7 @@ resources/
 
 # Trend writer cache (tracked for GitHub Actions persistence)
 scripts/.quality_history*.jsonl
-local_drafts/
+local_drafts/*
+!local_drafts/n8n_workflows/
+local_drafts/n8n_workflows/*
+!local_drafts/n8n_workflows/seoul_picks_automation.json
