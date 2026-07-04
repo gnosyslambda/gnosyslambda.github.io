@@ -7,6 +7,7 @@ import json
 import os
 import re
 import signal
+import socketserver
 import subprocess
 import threading
 import urllib.parse
@@ -31,6 +32,14 @@ PUBLISH_BRANCH = os.environ.get("BLOG_RUNNER_PUBLISH_BRANCH", "main")
 VALID_TRACKS = {"issue", "tech"}
 
 _lock = threading.Lock()
+
+
+class LocalThreadingHTTPServer(ThreadingHTTPServer):
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 def _terminate_process_group(process: subprocess.Popen, grace_seconds: float = 5.0) -> None:
@@ -106,6 +115,21 @@ def _created_files(step: dict[str, Any]) -> list[str]:
     return _publish_paths(files)
 
 
+def _collected_file(step: dict[str, Any]) -> str:
+    stdout = str(step.get("stdoutTail") or "")
+    match = re.search(r"^COLLECTED_FILE=(.+)$", stdout, flags=re.MULTILINE)
+    if not match:
+        return ""
+    files = _publish_paths([match.group(1)])
+    return files[0] if files else ""
+
+
+def _collected_count(step: dict[str, Any]) -> int:
+    stdout = str(step.get("stdoutTail") or "")
+    match = re.search(r"^CANDIDATE_COUNT=(\d+)$", stdout, flags=re.MULTILINE)
+    return int(match.group(1)) if match else 0
+
+
 def _frontmatter_value(lines: list[str], key: str) -> str:
     prefix = f"{key}:"
     for line in lines[:40]:
@@ -130,6 +154,55 @@ def _latest_scores(count: int) -> list[str]:
     return [f"{score:.1f}" for _, score in sorted(scores)[-count:]]
 
 
+def _blog_alert(track: str, ok: bool, paths: list[str], *, failed_step: str = "", error: str = "") -> str:
+    posts = [Path(path) for path in _publish_paths(paths) if path.startswith("content/posts/")]
+    scores = _latest_scores(len(posts))
+    label = "Gnosys 이슈" if track == "issue" else "Gnosys 기술"
+    lines = [
+        f"{'✅' if ok else '❌'} {label} 자동 발행",
+        f"상태: {'성공' if ok else '실패'}",
+        f"점수: {', '.join(score + '점' for score in scores) if scores else 'runner 응답 점수 없음'}",
+        f"발행글: {len(posts)}개",
+    ]
+    if failed_step:
+        lines.append(f"실패 단계: {failed_step}")
+    if error:
+        lines.append(f"오류: {error}")
+    for index, post in enumerate(posts, start=1):
+        content = (REPO_ROOT / post).read_text(errors="replace").splitlines()
+        title = _frontmatter_value(content, "title") or post.stem
+        description = _frontmatter_value(content, "description")
+        lines.append(f"\n{index}. {title}")
+        if description:
+            lines.append(f"요약: {description}")
+        lines.append(f"파일: {post.as_posix()}")
+    return "\n".join(lines)
+
+
+def _collect_alert(
+    track: str,
+    ok: bool,
+    collected_file: str = "",
+    candidate_count: int = 0,
+    *,
+    failed_step: str = "",
+    error: str = "",
+) -> str:
+    label = "Gnosys 이슈" if track == "issue" else "Gnosys 기술"
+    lines = [
+        f"{'✅' if ok else '❌'} {label} 후보 수집",
+        f"상태: {'성공' if ok else '실패'}",
+        f"후보: {candidate_count}개",
+        f"파일: {collected_file or '없음'}",
+        "발행글: 0개",
+    ]
+    if failed_step:
+        lines.append(f"실패 단계: {failed_step}")
+    if error:
+        lines.append(f"오류: {error}")
+    return "\n".join(lines)
+
+
 def _telegram_chat_id(token: str, env: dict[str, str]) -> str:
     chat_id = env.get("TELEGRAM_CHAT_ID", "").strip()
     if chat_id:
@@ -150,21 +223,12 @@ def _send_telegram_notification(track: str, paths: list[str], env: dict[str, str
     if not token:
         return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 1, "startedAt": started_at, "stdoutTail": "", "stderrTail": "TELEGRAM_BOT_TOKEN missing"}
 
-    posts = [Path(path) for path in _publish_paths(paths) if path.startswith("content/posts/")]
-    scores = _latest_scores(len(posts))
-    lines = [f"n8n blog publish complete ({track})", f"published posts: {len(posts)}", ""]
-    for index, post in enumerate(posts):
-        content = (REPO_ROOT / post).read_text(errors="replace").splitlines()
-        score = scores[index] if index < len(scores) else "unknown"
-        lines.append(f"- {_frontmatter_value(content, 'title')} ({score}점)")
-        description = _frontmatter_value(content, "description")
-        if description:
-            lines.append(f"  {description}")
-    data = urllib.parse.urlencode({"chat_id": _telegram_chat_id(token, env), "text": "\n".join(lines)})
+    text = _blog_alert(track, True, paths)
+    data = urllib.parse.urlencode({"chat_id": _telegram_chat_id(token, env), "text": text})
     request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data.encode("utf-8"))
     with urllib.request.urlopen(request, timeout=15) as response:
         response.read()
-    return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 0, "startedAt": started_at, "stdoutTail": "\n".join(lines), "stderrTail": ""}
+    return {"name": "send telegram notification", "command": ["telegram", "sendMessage"], "exitCode": 0, "startedAt": started_at, "stdoutTail": text, "stderrTail": ""}
 
 
 def _publish_blog_changes(track: str, paths: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
@@ -212,6 +276,7 @@ def run_blog_job(
     notify: bool = False,
     publish_paths: list[str] | None = None,
     publish_only: bool = False,
+    collect_only: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     if not _lock.acquire(blocking=False):
         return 409, {"ok": False, "error": "blog runner is already running"}
@@ -227,20 +292,39 @@ def run_blog_job(
         commands = []
         if "BLOG_RUNNER_PYTHON" not in os.environ:
             commands.append(("prepare python venv", [SYSTEM_PYTHON_BIN, "-m", "venv", str(VENV_DIR)]))
-        commands.extend([
-            ("install dependencies", [PYTHON_BIN, "-m", "pip", "install", "-q", "-r", "scripts/requirements.txt"]),
-            ("verify humanizer gate", [PYTHON_BIN, "-B", "scripts/test_humanizer_gate.py"]),
-            ("build hugo site", [HUGO_BIN, "--minify"]),
-        ])
-        if not publish_only:
+        commands.append(("install dependencies", [PYTHON_BIN, "-m", "pip", "install", "-q", "-r", "scripts/requirements.txt"]))
+        if collect_only:
+            commands.append(("collect topic candidates", [PYTHON_BIN, "-B", "scripts/collect_topics.py", "--track", track]))
+        else:
+            commands.extend([
+                ("verify humanizer gate", [PYTHON_BIN, "-B", "scripts/test_humanizer_gate.py"]),
+                ("build hugo site", [HUGO_BIN, "--minify"]),
+            ])
+        if not collect_only and not publish_only:
             commands.insert(-1, ("write post with codex", [PYTHON_BIN, "scripts/trend_writer.py", "--track", track]))
 
         for name, command in commands:
             step = _run_step(name, command, env)
             steps.append(step)
             if step["exitCode"] != 0:
-                return 500, {"ok": False, "track": track, "failedStep": name, "steps": steps}
+                alert = _collect_alert(track, False, failed_step=name) if collect_only else _blog_alert(track, False, [], failed_step=name)
+                return 500, {"ok": False, "track": track, "collectOnly": collect_only, "failedStep": name, "alert": alert, "steps": steps}
 
+        if collect_only:
+            collect_step = next(step for step in steps if step["name"] == "collect topic candidates")
+            collected_file = _collected_file(collect_step)
+            candidate_count = _collected_count(collect_step)
+            return 200, {
+                "ok": True,
+                "track": track,
+                "collectOnly": True,
+                "collectedFile": collected_file,
+                "candidateCount": candidate_count,
+                "alert": _collect_alert(track, True, collected_file, candidate_count),
+                "steps": steps,
+            }
+
+        paths: list[str] = []
         if publish or publish_only:
             paths = list(publish_paths or [])
             if not publish_only:
@@ -248,18 +332,21 @@ def run_blog_job(
             for step in _publish_blog_changes(track, paths, env):
                 steps.append(step)
                 if step["exitCode"] != 0:
-                    return 500, {"ok": False, "track": track, "failedStep": step["name"], "steps": steps}
+                    return 500, {"ok": False, "track": track, "failedStep": step["name"], "createdFiles": paths, "alert": _blog_alert(track, False, paths, failed_step=step["name"]), "steps": steps}
             if notify:
                 step = _send_telegram_notification(track, paths, env)
                 steps.append(step)
                 if step["exitCode"] != 0:
-                    return 500, {"ok": False, "track": track, "failedStep": step["name"], "steps": steps}
+                    return 500, {"ok": False, "track": track, "failedStep": step["name"], "createdFiles": paths, "alert": _blog_alert(track, False, paths, failed_step=step["name"]), "steps": steps}
 
-        return 200, {"ok": True, "track": track, "steps": steps}
+        return 200, {"ok": True, "track": track, "createdFiles": paths, "alert": _blog_alert(track, True, paths), "steps": steps}
     except subprocess.TimeoutExpired as exc:
-        return 504, {"ok": False, "track": track, "error": f"timeout after {TIMEOUT_SECONDS}s", "step": exc.cmd, "steps": steps}
+        error = f"timeout after {TIMEOUT_SECONDS}s"
+        alert = _collect_alert(track, False, error=error) if collect_only else _blog_alert(track, False, [], error=error)
+        return 504, {"ok": False, "track": track, "collectOnly": collect_only, "error": error, "step": exc.cmd, "alert": alert, "steps": steps}
     except Exception as exc:
-        return 500, {"ok": False, "track": track, "error": str(exc), "steps": steps}
+        alert = _collect_alert(track, False, error=str(exc)) if collect_only else _blog_alert(track, False, [], error=str(exc))
+        return 500, {"ok": False, "track": track, "collectOnly": collect_only, "error": str(exc), "alert": alert, "steps": steps}
     finally:
         _lock.release()
 
@@ -307,6 +394,7 @@ class BlogRunnerHandler(BaseHTTPRequestHandler):
             publish=bool(body.get("publish")),
             notify=bool(body.get("notify")),
             publish_only=bool(body.get("publishOnly")),
+            collect_only=bool(body.get("collectOnly")),
             publish_paths=[str(path) for path in publish_paths],
         )
         _json_response(self, status, payload)
@@ -316,7 +404,7 @@ def main() -> None:
     if HOST not in {"127.0.0.1", "localhost", "::1"} and not TOKEN:
         raise SystemExit("BLOG_RUNNER_TOKEN is required when BLOG_RUNNER_HOST is not loopback")
 
-    server = ThreadingHTTPServer((HOST, PORT), BlogRunnerHandler)
+    server = LocalThreadingHTTPServer((HOST, PORT), BlogRunnerHandler)
     print(f"n8n Codex blog runner listening on http://{HOST}:{PORT}", flush=True)
     server.serve_forever()
 

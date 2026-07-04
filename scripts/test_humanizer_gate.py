@@ -72,6 +72,28 @@ assert "현재 트랙에 맞는 글감" in source
 assert "회사 기술 블로그나 공식 문서는 주장 검증과 사례 보강에만 사용" in source
 assert "issue 트랙" in source
 assert "tech 트랙" in source
+# Named failure taxonomy: rubric and judges must reference concrete pattern codes.
+assert "실패 패턴 점검 목록" in source
+assert "stale_structure" in source
+assert "weak_community_angle" in source
+assert "thin_evidence" in source
+assert "generic_conclusion" in source
+assert "missing_counterpoint" in source
+assert "single_source_summary" in source
+assert "ai_tone" in source
+assert "구조 다양성 원칙" in source
+# Flexible functional-beat structure replaced the fixed H2 skeleton.
+assert "기능적 비트" in source
+assert "## 왜 지금 이슈인가" not in source
+assert "## 커뮤니티에서 갈리는 지점" not in source
+assert "## 아키텍처 관점에서 볼 점" not in source
+assert "## 실무에서 볼 점" not in source
+assert "## 무슨 일이 있었나" not in source
+# AI-tell guards exist both at generation time and in the humanizer gate.
+assert source.count("상투적 전환어") >= 2
+assert source.count("수사 의문문") >= 2
+assert "귀추가 주목된다" in source
+assert "새 사실, 새 수치, 새 경험담을 추가하지 말 것" in source
 assert "대표 원문은 중심축" not in source
 assert "GEMINI" not in source
 assert "google.genai" not in source
@@ -99,3 +121,12 @@ candidate_calls = [
 ]
 
 assert candidate_calls.index("generate_post") < candidate_calls.index("humanize_post")
+
+runner_source = Path(__file__).with_name("n8n_codex_blog_runner.py").read_text(encoding="utf-8")
+collector_source = Path(__file__).with_name("collect_topics.py").read_text(encoding="utf-8")
+
+assert "collectOnly" in runner_source
+assert "scripts/collect_topics.py" in runner_source
+assert "candidateCount" in runner_source
+assert "COLLECTED_FILE" in collector_source
+assert "CANDIDATE_COUNT" in collector_source
