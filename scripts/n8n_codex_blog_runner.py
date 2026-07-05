@@ -170,29 +170,71 @@ def _latest_scores(count: int) -> list[str]:
     return [f"{score:.1f}" for _, score in sorted(scores)[-count:]]
 
 
+_ISSUE_LABELS = {
+    "single_source_summary": "단일 출처 요약",
+    "weak_community_angle": "커뮤니티 반응 약함",
+    "generic_conclusion": "일반적 결론",
+    "missing_counterpoint": "반론 부재",
+    "thin_evidence": "근거 부족",
+    "stale_structure": "구조 진부",
+    "ai_tone": "AI 말투",
+}
+
+
+def _html_escape(value: Any) -> str:
+    return str("" if value is None else value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _post_history() -> dict[str, dict[str, Any]]:
+    """saved_post_relpath -> {avg, issue_codes} from the latest 'selected' quality entry."""
+    path = SCRIPT_DIR / ".quality_history.jsonl"
+    out: dict[str, dict[str, Any]] = {}
+    if path.exists():
+        for line in path.read_text(errors="replace").splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rel = item.get("saved_post_relpath")
+            if item.get("status") == "selected" and rel:
+                out[rel] = {"avg": (item.get("scores") or {}).get("avg"), "issue_codes": item.get("issue_codes") or []}
+    return out
+
+
 def _blog_alert(track: str, ok: bool, paths: list[str], *, failed_step: str = "", error: str = "") -> str:
     posts = [Path(path) for path in _publish_paths(paths) if path.startswith("content/posts/")]
-    scores = _latest_scores(len(posts))
     label = "Gnosys 이슈" if track == "issue" else "Gnosys 기술"
-    lines = [
-        f"{'✅' if ok else '❌'} {label} 자동 발행",
-        f"상태: {'성공' if ok else '실패'}",
-        f"점수: {', '.join(score + '점' for score in scores) if scores else 'runner 응답 점수 없음'}",
-        f"발행글: {len(posts)}개",
-    ]
-    if failed_step:
-        lines.append(f"실패 단계: {failed_step}")
-    if error:
-        lines.append(f"오류: {error}")
-    for index, post in enumerate(posts, start=1):
+    if not ok:
+        lines = [f"🔴 <b>{_html_escape(label)} 발행 실패</b>"]
+        if failed_step:
+            lines.append(f"⛔ 단계: {_html_escape(failed_step)}")
+        if error:
+            lines.append(f"⚠️ 오류: {_html_escape(error[:400])}")
+        return "\n".join(lines)
+    published = bool(posts)
+    header = "✅ <b>발행 완료</b>" if published else "📝 <b>검토 대기 · 미발행</b>"
+    hist = _post_history()
+    out = [f"🔔 {header}", f"🗂 블로그: <b>{_html_escape(label)}</b>", ""]
+    for post in posts:
         content = (REPO_ROOT / post).read_text(errors="replace").splitlines()
         title = _frontmatter_value(content, "title") or post.stem
         description = _frontmatter_value(content, "description")
-        lines.append(f"\n{index}. {title}")
+        info = hist.get(post.as_posix(), {})
+        avg = info.get("avg")
+        emoji = "🟢" if isinstance(avg, (int, float)) and avg >= 90 else ("🟡" if isinstance(avg, (int, float)) and avg >= 85 else "🔴")
+        out.append(f"{emoji} <b>{_html_escape(title)}</b>")
+        if isinstance(avg, (int, float)):
+            out.append(f"   ├ 점수: <b>{avg:.1f}점</b>")
         if description:
-            lines.append(f"요약: {description}")
-        lines.append(f"파일: {post.as_posix()}")
-    return "\n".join(lines)
+            out.append(f"   ├ 📝 {_html_escape(description[:200])}")
+        labels = [_ISSUE_LABELS.get(code, code) for code in (info.get("issue_codes") or [])][:4]
+        if labels:
+            out.append(f"   ├ 📊 지적: {_html_escape(', '.join(labels))}")
+        out.append(f'   └ 🔗 <a href="https://gnosyslambda.github.io/posts/{_html_escape(post.stem)}/">글 보기</a>')
+        out.append("")
+    if not posts:
+        out.append("발행된 글 없음 (품질 기준 미달)")
+    return "\n".join(out).strip()
 
 
 def _collect_alert(
@@ -237,7 +279,12 @@ def _send_telegram_text(text: str, env: dict[str, str]) -> None:
     token = env.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN missing")
-    data = urllib.parse.urlencode({"chat_id": _telegram_chat_id(token, env), "text": text})
+    data = urllib.parse.urlencode({
+        "chat_id": _telegram_chat_id(token, env),
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    })
     request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data.encode("utf-8"))
     with urllib.request.urlopen(request, timeout=15) as response:
         response.read()
