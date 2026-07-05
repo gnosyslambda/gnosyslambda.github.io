@@ -1806,6 +1806,24 @@ def _check_cooldown() -> None:
         log.warning(f"쿨다운 체크 실패 (무시하고 계속): {e}")
 
 
+DAILY_POST_LIMIT = int(os.environ.get("TREND_DAILY_POST_LIMIT", "2"))
+
+
+def _check_daily_limit() -> None:
+    """오늘(KST) 발행 수가 일일 상한에 도달했으면 이번 실행을 건너뜁니다."""
+    kst = timezone(timedelta(hours=9))
+    today = datetime.now(tz=kst).strftime("%Y-%m-%d")
+    try:
+        count = len(list(POSTS_DIR.glob(f"{today}-*.md")))
+    except Exception as exc:
+        log.warning(f"일일 상한 체크 실패 (무시하고 계속): {exc}")
+        return
+    if count >= DAILY_POST_LIMIT:
+        log.info(f"⏭️  오늘 이미 {count}개 발행 (일일 상한 {DAILY_POST_LIMIT}) — 이번 실행은 건너뜁니다.")
+        sys.exit(0)
+    log.info(f"📅 오늘 발행 {count}/{DAILY_POST_LIMIT}개 — 계속")
+
+
 def create_post_for_article(article: dict, articles: list[dict]) -> Path:
     log.info(f"🧵 주제 작성 시작: [{article['source']}] {article['title']}")
 
@@ -1855,9 +1873,10 @@ def main():
         f"judge_timeout={JUDGE_TIMEOUT_SECONDS}s, max_codex_calls≈{max_quality_calls + (TOPICS_PER_RUN * 3)}"
     )
 
-    # 0. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
+    # 0. 쿨다운 + 일일 상한 체크: FORCE_RUN 환경변수가 있으면 스킵
     if not os.environ.get("FORCE_RUN"):
         _check_cooldown()
+        _check_daily_limit()
 
     # 1. seen 로드 (타임스탬프 기반, 만료된 항목 자동 제외)
     seen = load_seen()
