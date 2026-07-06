@@ -233,7 +233,7 @@ def _blog_alert(track: str, ok: bool, paths: list[str], *, failed_step: str = ""
         out.append(f'   └ 🔗 <a href="https://gnosyslambda.github.io/posts/{_html_escape(post.stem)}/">글 보기</a>')
         out.append("")
     if not posts:
-        out.append("발행된 글 없음 (품질 기준 미달)")
+        out.append("발행된 글 없음 (검토 대기/자동 발행 스킵)")
     return "\n".join(out).strip()
 
 
