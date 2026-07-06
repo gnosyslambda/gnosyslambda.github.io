@@ -56,6 +56,8 @@ jobs:
             --minify \
             --baseURL "${{ steps.pages.outputs.base_url }}/"
           cp public/sitemap.xml public/sitemap_index.xml
+          gzip -c public/sitemap.xml > public/sitemap.xml.gz
+          gzip -c public/sitemap.xml > public/sitemap_index.xml.gz
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
