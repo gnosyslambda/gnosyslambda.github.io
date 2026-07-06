@@ -56,9 +56,9 @@ TOPICS_PER_RUN = min(10, max(1, int(os.environ.get("TOPICS_PER_RUN", "3"))))
 POST_VARIANTS = min(5, max(1, int(os.environ.get("POST_VARIANTS", "5"))))
 POST_REPAIR_VARIANTS = min(POST_VARIANTS, max(1, int(os.environ.get("POST_REPAIR_VARIANTS", "2"))))
 POST_JUDGES = min(5, max(1, int(os.environ.get("POST_JUDGES", "2"))))
-POST_MIN_SCORE = float(os.environ.get("POST_MIN_SCORE", "95"))
-POST_REVIEW_MIN_SCORE = float(os.environ.get("POST_REVIEW_MIN_SCORE", "90"))
-POST_POLISH_MIN_SCORE = float(os.environ.get("POST_POLISH_MIN_SCORE", "93"))
+POST_MIN_SCORE = float(os.environ.get("POST_MIN_SCORE", "85"))
+POST_REVIEW_MIN_SCORE = float(os.environ.get("POST_REVIEW_MIN_SCORE", "80"))
+POST_POLISH_MIN_SCORE = float(os.environ.get("POST_POLISH_MIN_SCORE", "85"))
 POST_MAX_ROUNDS = max(1, int(os.environ.get("POST_MAX_ROUNDS", "2")))
 CANDIDATE_TIMEOUT_SECONDS = int(os.environ.get("CANDIDATE_TIMEOUT_SECONDS", str(CODEX_TIMEOUT_SECONDS)))
 JUDGE_TIMEOUT_SECONDS = int(os.environ.get("JUDGE_TIMEOUT_SECONDS", str(CODEX_TIMEOUT_SECONDS)))
@@ -214,7 +214,7 @@ QUALITY_RUBRIC = """
 - 구조/문단/전환 흐름 8
 - 문장 압축력과 한국어 자연스러움 6
 - 결말 회수와 여운/행동 유도 7
-초안 작성 단계부터 95점 이상을 목표로 삼고, 부족한 항목은 본문 안에서 보강하세요.
+초안 작성 단계부터 85점 이상을 목표로 삼고, 부족한 항목은 본문 안에서 보강하세요.
 """
 
 
@@ -1113,7 +1113,7 @@ def generate_post(
         variant_note = f"""
 이번 출력은 후보 {variant_index}/{total_variants}입니다.
 - 같은 자료에서 출발하되, 다른 후보와 제목감, 초반 긴장, 결론 관점을 다르게 잡으세요.
-- 억지로 튀지 말고, 95점 이상 평가를 받을 수 있는 가장 설득력 있는 한 가지 관점에 집중하세요.
+- 억지로 튀지 말고, 85점 이상 평가를 받을 수 있는 가장 설득력 있는 한 가지 관점에 집중하세요.
 """
     feedback_note = ""
     if quality_feedback:
@@ -1342,12 +1342,12 @@ def evaluate_post(article: dict, body: str, supporting_context: str, judge_index
     prompt = f"""{track_context()}
 
 당신은 블로그 글 품질을 평가하는 독립 judge 에이전트 {judge_index}입니다.
-95점 이상은 완벽한 글이 아니라, 사람이 바로 게시해도 되는 수준입니다.
-선호 차이, 더 좋아질 여지, 사소한 문장 polish는 95점 미만 사유가 아닙니다.
-95점 미만을 주려면 게시를 막는 구체적 publish blocker를 blockers에 최소 1개 적어야 합니다.
-publish blocker가 없다면 score는 반드시 95점 이상이고 publishable은 true입니다.
+85점 이상은 완벽한 글이 아니라, 사람이 바로 게시해도 되는 수준입니다.
+선호 차이, 더 좋아질 여지, 사소한 문장 polish는 85점 미만 사유가 아닙니다.
+85점 미만을 주려면 게시를 막는 구체적 publish blocker를 blockers에 최소 1개 적어야 합니다.
+publish blocker가 없다면 score는 반드시 85점 이상이고 publishable은 true입니다.
 blockers는 사실 오류, 핵심 주장 검증 불가, 제목/본문 불일치, 구조 붕괴, 게시 품질 미달 문체, 출처가 필요한 핵심 주장 누락, 중복/환각/명백한 생성 흔적에만 씁니다.
-구체적 근거를 강제하는 하드 blocker(아래 중 하나라도 해당하면 반드시 blocker 처리하고 95점 미만):
+구체적 근거를 강제하는 하드 blocker(아래 중 하나라도 해당하면 반드시 blocker 처리하고 85점 미만):
 - 핵심 기술 주장/수치를 선정 글감이나 이름 있는 보조 레퍼런스로 추적할 수 없음(출처 없는 단정).
 - how-to/기술 설명 글인데 재현 가능한 구체 산출물이 하나도 없음(명령어, 코드/설정 블록, 버전·날짜가 박힌 절차, 또는 구체적 측정 수치 중 최소 1개).
 - 이 출처의 구체성이 없고 같은 주제 아무 글에나 들어맞는 일반론으로 채워짐.
@@ -1371,7 +1371,7 @@ blockers는 사실 오류, 핵심 주장 검증 불가, 제목/본문 불일치,
 {{
 "score": 0,
 "publishable": false,
-"blockers": ["95점 미만이면 게시를 막는 구체적 결함. 없으면 빈 배열"],
+"blockers": ["85점 미만이면 게시를 막는 구체적 결함. 없으면 빈 배열"],
 "top_3_fixes": ["blocker를 제거하고 점수를 올릴 가장 큰 수정 3개 이하"],
 "do_not_change": ["이미 좋은 부분 3개 이하"],
 "minor_suggestions": ["게시를 막지 않는 선택적 개선점"],
@@ -1637,7 +1637,7 @@ saved_at: {yaml_quote(now_kst.strftime("%Y-%m-%dT%H:%M:%S+09:00"))}
 {candidate["body"]}
 """
     filepath.write_text(content, encoding="utf-8")
-    log.info(f"🗂️ 90점 이상 수정 후보 저장: {filepath}")
+    log.info(f"🗂️ 80점 이상 수정 후보 저장: {filepath}")
     return filepath
 
 

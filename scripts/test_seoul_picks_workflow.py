@@ -34,10 +34,10 @@ class SeoulPicksWorkflowTests(unittest.TestCase):
             "categories = ['Skincare','Makeup','K-Food','Lifestyle','K-Tech','K-Entertainment','Korea Travel','K-Culture']",
             body,
         )
-        self.assertIn("variants: 1", body)
+        self.assertIn("variants: 3", body)
         self.assertIn("judges: 1", body)
-        self.assertIn("minScore: 95", body)
-        self.assertIn("reviewMinScore: 90", body)
+        self.assertIn("minScore: 85", body)
+        self.assertIn("reviewMinScore: 80", body)
         self.assertIn("dryRun: false", body)
         self.assertIn("publish: true", body)
         self.assertIn("sendToBlogger: true", body)
