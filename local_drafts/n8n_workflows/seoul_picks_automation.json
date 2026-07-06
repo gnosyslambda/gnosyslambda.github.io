@@ -41,9 +41,9 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ (() => { const categories = ['Skincare','Makeup','K-Food','Lifestyle','K-Tech','K-Entertainment','Korea Travel','K-Culture']; const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', hour12: false }).formatToParts(new Date()); const rawHour = Number(parts.find((part) => part.type === 'hour')?.value || '9'); const hour = rawHour === 24 ? 0 : rawHour; const index = ((hour - 9) % categories.length + categories.length) % categories.length; return JSON.stringify({ track: 'seoul-picks', force: false, topicsPerRun: 1, variants: 3, judges: 1, minScore: 85, reviewMinScore: 80, dryRun: false, publish: true, sendToBlogger: true, isDraft: false, category: categories[index] }); })() }}",
+        "jsonBody": "={{ (() => { const categories = ['Skincare','Makeup','K-Food','Lifestyle','K-Tech','K-Entertainment','Korea Travel','K-Culture']; const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', hour12: false }).formatToParts(new Date()); const rawHour = Number(parts.find((part) => part.type === 'hour')?.value || '9'); const hour = rawHour === 24 ? 0 : rawHour; const index = ((hour - 9) % categories.length + categories.length) % categories.length; return JSON.stringify({ track: 'seoul-picks', force: false, topicsPerRun: 1, variants: 1, judges: 1, minScore: 85, reviewMinScore: 80, dryRun: false, publish: true, sendToBlogger: true, isDraft: false, category: categories[index] }); })() }}",
         "options": {
-          "timeout": 3600000,
+          "timeout": 600000,
           "response": {
             "response": {
               "neverError": true
