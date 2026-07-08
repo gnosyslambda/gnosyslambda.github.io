@@ -1,0 +1,26 @@
+{{- printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  {{- $pages := slice site.Home }}
+  {{- with site.GetPage "section" "posts" }}
+    {{- $pages = $pages | append . }}
+  {{- end }}
+  {{- with site.GetPage "page" "about" }}
+    {{- $pages = $pages | append . }}
+  {{- end }}
+  {{- with site.GetPage "page" "privacy" }}
+    {{- $pages = $pages | append . }}
+  {{- end }}
+  {{- range site.RegularPages }}
+    {{- if and (not .Draft) (not .Params.robotsNoIndex) }}
+      {{- $pages = $pages | append . }}
+    {{- end }}
+  {{- end }}
+  {{- range $pages | uniq }}
+  <url>
+    <loc>{{ .Permalink }}</loc>
+    {{- with .Lastmod }}
+    <lastmod>{{ .Format "2006-01-02T15:04:05-07:00" }}</lastmod>
+    {{- end }}
+  </url>
+  {{- end }}
+</urlset>

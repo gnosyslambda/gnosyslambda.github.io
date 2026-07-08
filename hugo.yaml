@@ -10,6 +10,24 @@ buildDrafts: false
 buildFuture: false
 buildExpired: false
 
+cascade:
+  - target:
+      kind: taxonomy
+    robotsNoIndex: true
+  - target:
+      kind: term
+    robotsNoIndex: true
+  - target:
+      kind: section
+      path: /posts
+    robotsNoIndex: true
+  - target:
+      path: /search
+    robotsNoIndex: true
+  - target:
+      path: /archives
+    robotsNoIndex: true
+
 minify:
   disableXML: true
   minifyOutput: true
