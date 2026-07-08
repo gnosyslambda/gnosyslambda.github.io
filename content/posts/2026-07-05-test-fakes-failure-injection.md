@@ -18,10 +18,6 @@ source:
   name: "Lobsters"
   url: "https://pierrezemb.fr/posts/why-fakes-beat-mocks-and-testcontainers/"
   title: "Why Fakes Beat Mocks and Testcontainers"
-cover:
-  image: "https://pierrezemb.fr/images/myself.jpg"
-  alt: "Cover image"
-  relative: false
 showToc: true
 TocOpen: true
 ---
