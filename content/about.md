@@ -106,6 +106,7 @@ Kubernetes 오케스트레이션, CI/CD 파이프라인 자동화, 클라우드 
 <div class="about-connect">
 
 [![GitHub](https://img.shields.io/badge/GitHub-gnosyslambda-181717?style=for-the-badge&logo=github)](https://github.com/gnosyslambda)
+[![Consulting](https://img.shields.io/badge/Consulting-AI%20%26%20Backend-6C63FF?style=for-the-badge)](https://gnosyslambda.github.io/consulting/)
 [![Blog](https://img.shields.io/badge/Blog-gnosyslambda's%20log-FF5722?style=for-the-badge&logo=hugo)](https://gnosyslambda.github.io)
 [![RSS](https://img.shields.io/badge/RSS-Subscribe-FFA500?style=for-the-badge&logo=rss)](https://gnosyslambda.github.io/index.xml)
 
