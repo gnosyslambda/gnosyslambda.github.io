@@ -1,0 +1,19 @@
+
+/* --- Home Featured Links --- */
+.home-featured {
+    margin: 1.1rem auto 0;
+    max-width: 760px;
+    font-size: 0.98rem;
+    line-height: 1.8;
+}
+
+.home-featured a {
+    font-weight: 700;
+    color: var(--accent-light);
+    border-bottom: 1px solid rgba(108, 99, 255, 0.35);
+}
+
+.home-featured a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
