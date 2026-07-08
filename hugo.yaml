@@ -123,7 +123,8 @@ menu:
       url: /archives/
       weight: 40
     - identifier: search
-      name: Search
+      name: 🔎
+      title: Search posts
       url: /search/
       weight: 50
     - identifier: about
