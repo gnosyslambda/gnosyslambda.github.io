@@ -1,9 +1,6 @@
 {{- printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   {{- $pages := slice site.Home }}
-  {{- with site.GetPage "section" "posts" }}
-    {{- $pages = $pages | append . }}
-  {{- end }}
   {{- with site.GetPage "page" "about" }}
     {{- $pages = $pages | append . }}
   {{- end }}

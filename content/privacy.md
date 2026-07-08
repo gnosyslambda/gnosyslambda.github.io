@@ -24,7 +24,9 @@ comments: false
 **광고 (Google AdSense)**
 - 본 블로그는 Google AdSense를 통해 광고를 게재할 수 있습니다.
 - Google은 쿠키를 사용하여 방문자의 관심사에 맞는 광고를 표시합니다.
+- Google과 파트너는 이 블로그와 다른 사이트 방문 정보를 활용해 맞춤형 또는 비맞춤형 광고를 제공할 수 있습니다.
 - 관심 기반 광고를 거부하려면 [Google 광고 설정](https://adssettings.google.com)에서 변경할 수 있습니다.
+- Google이 파트너 사이트의 정보를 사용하는 방식은 [Google 파트너 사이트 데이터 사용 안내](https://policies.google.com/technologies/partner-sites)에서 확인할 수 있습니다.
 
 **댓글**
 - 댓글 작성 시 닉네임과 댓글 내용을 수집합니다.
