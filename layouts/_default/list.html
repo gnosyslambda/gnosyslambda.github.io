@@ -55,7 +55,7 @@
 <div class="recent-posts-section">
   <div class="recent-posts-header">
     <h2 class="recent-posts-title">Recent Posts</h2>
-    <a href="{{ "posts/" | absURL }}" class="recent-posts-more">모든 글 보기 &rarr;</a>
+    <a href="{{ "posts/" | absLangURL }}" class="recent-posts-more">{{ if eq .Lang "en" }}All posts &rarr;{{ else }}모든 글 보기 &rarr;{{ end }}</a>
   </div>
   <div class="recent-posts-grid">
     {{- range first 6 $pages }}
