@@ -14,6 +14,7 @@ tags:
 categories:
   - "기술 트렌드"
 description: "주거용 프록시와 AI 스크래퍼가 오픈웹을 압박하는 이유를 LWN 보도와 NetNut 압수 사례로 정리합니다."
+translationKey: 2026-07-12-residential-proxy-ai-scraper
 source:
   name: "Hacker News Best"
   url: "https://lwn.net/SubscriberLink/1080822/990a8a5e2d379085/"

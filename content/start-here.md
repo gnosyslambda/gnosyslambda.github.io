@@ -6,6 +6,7 @@ description: "gnosyslambda 기술 블로그의 핵심 글을 AI 에이전트 보
 summary: "AI 에이전트 보안, 인프라 보안, 프라이버시, 운영 자동화 글을 빠르게 찾는 시작 페이지입니다."
 showToc: true
 TocOpen: true
+translationKey: start-here
 ---
 
 이 블로그는 자동 수집된 기술 이슈를 그냥 쌓아두기보다, 운영자가 실제로 판단해야 하는 질문으로 다시 묶어 읽기 위한 로그다. 처음 방문했다면 아래 흐름부터 보면 된다.

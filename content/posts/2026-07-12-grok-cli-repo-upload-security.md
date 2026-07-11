@@ -14,6 +14,7 @@ tags:
 categories:
   - "AI · 커뮤니티"
 description: "Grok Build CLI가 전체 저장소와 git 히스토리, .env 비밀값까지 xAI 클라우드로 보낸다는 주장과 보안 쟁점을 정리합니다."
+translationKey: 2026-07-12-grok-cli-repo-upload-security
 source:
   name: "Reddit LocalLLaMA"
   url: "https://www.reddit.com/r/LocalLLaMA/comments/1ut7tis/grok_build_cli_uploads_your_whole_repo_full_git/"

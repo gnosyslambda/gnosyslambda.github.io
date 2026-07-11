@@ -1,0 +1,76 @@
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin-left: 0.4rem;
+  color: var(--secondary);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.language-switch a {
+  color: var(--secondary);
+  text-decoration: none;
+}
+
+.language-switch a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.language-current {
+  color: var(--primary);
+  font-weight: 650;
+}
+
+#language-suggestion {
+  position: fixed;
+  z-index: 10001;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--entry);
+  color: var(--primary);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+#language-suggestion p {
+  margin: 0 0 0.65rem;
+}
+
+#language-suggestion .language-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+#language-suggestion a,
+#language-suggestion button {
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: none;
+}
+
+#language-suggestion a {
+  background: var(--primary);
+  color: var(--theme);
+  border-color: var(--primary);
+}
+
+@media (max-width: 520px) {
+  .language-switch {
+    font-size: 0.72rem;
+    margin-left: 0.2rem;
+  }
+}

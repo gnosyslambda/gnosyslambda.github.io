@@ -5,6 +5,7 @@ title: "About"
 layout: "about"
 url: "/about/"
 summary: "gnosyslambda — Software Engineer & AI Explorer"
+translationKey: about
 ---
 
 <div class="about-hero">

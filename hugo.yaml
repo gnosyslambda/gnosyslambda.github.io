@@ -1,5 +1,4 @@
 baseURL: "https://gnosyslambda.github.io/"
-languageCode: ko-KR
 title: "gnosyslambda's log"
 theme: PaperMod
 googleAnalytics: "G-D52V7VW49P"
@@ -9,6 +8,28 @@ enableRobotsTXT: true
 buildDrafts: false
 buildFuture: false
 buildExpired: false
+
+defaultContentLanguage: ko
+defaultContentLanguageInSubdir: false
+
+languages:
+  ko:
+    locale: ko-KR
+    label: "한국어"
+    weight: 1
+    params:
+      languageAltTitle: "Korean"
+  en:
+    locale: en-US
+    label: "English"
+    weight: 2
+    params:
+      languageAltTitle: "English"
+      description: "Practical notes on AI agents, backend architecture, security, and operations."
+      keywords: [developer, AI, backend, architecture, LLM, security, operations]
+      homeInfoParams:
+        Title: " "
+        Content: "</p><div class='home-hero'><img src='https://github.com/gnosyslambda.png' alt='gnosyslambda avatar' class='home-avatar'/><h1 class='home-name'>gnosyslambda</h1><span class='home-role'>Backend Engineer · AI Explorer</span><p class='home-desc'>AI agents · backend architecture · security and operations<br/>Practical technical judgment for systems people can explain and operate safely.</p><p class='home-featured'><a href='/en/start-here/'>Start Here</a> · <a href='/en/posts/2026-07-12-grok-cli-repo-upload-security/'>AI coding tools</a> · <a href='/en/posts/2026-07-12-residential-proxy-ai-scraper/'>Open-web security</a></p></div><p>"
 
 cascade:
   - target:
@@ -42,6 +63,8 @@ params:
 
   defaultTheme: dark
   disableThemeToggle: false
+  disableLangToggle: false
+  displayFullLangName: true
 
   ShowReadingTime: false
   ShowShareButtons: true

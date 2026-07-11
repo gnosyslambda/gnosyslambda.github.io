@@ -6,6 +6,7 @@ layout: "single"
 showtoc: false
 hidemeta: true
 comments: false
+translationKey: privacy
 ---
 
 본 개인정보처리방침은 **gnosyslambda's log** (https://gnosyslambda.github.io, 이하 "블로그")가 수집하는 정보와 그 사용 방식을 설명합니다.
