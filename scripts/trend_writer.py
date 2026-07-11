@@ -49,10 +49,11 @@ REVIEW_DRAFTS_DIR = REPO_ROOT / "local_drafts" / "review"
 SEEN_CACHE = SCRIPT_DIR / ".seen_articles.json"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.5")
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.6-sol")
 CODEX_REASONING_EFFORT = os.environ.get("CODEX_REASONING_EFFORT", "xhigh")
 CODEX_TIMEOUT_SECONDS = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "900"))
-TOPICS_PER_RUN = min(10, max(1, int(os.environ.get("TOPICS_PER_RUN", "3"))))
+TOPICS_PER_RUN = min(10, max(1, int(os.environ.get("TOPICS_PER_RUN", "2"))))
+DAILY_POST_LIMIT = min(10, max(1, int(os.environ.get("DAILY_POST_LIMIT", "2"))))
 POST_VARIANTS = min(5, max(1, int(os.environ.get("POST_VARIANTS", "5"))))
 POST_REPAIR_VARIANTS = min(POST_VARIANTS, max(1, int(os.environ.get("POST_REPAIR_VARIANTS", "2"))))
 POST_JUDGES = min(5, max(1, int(os.environ.get("POST_JUDGES", "2"))))
@@ -1778,7 +1779,21 @@ TocOpen: true
 # ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
-POST_COOLDOWN_MINUTES = 460  # 이 시간 이내에 이미 포스트가 생성됐으면 스킵 (8시간 - 여유 20분)
+POST_COOLDOWN_MINUTES = 460  # Separate from the hard daily publication cap.
+
+
+def current_kst_date_prefix() -> str:
+    return datetime.now(tz=timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
+
+
+def daily_post_count(date_prefix: str | None = None) -> int:
+    """Count locally generated posts for one KST calendar date."""
+    prefix = date_prefix or current_kst_date_prefix()
+    return sum(1 for path in POSTS_DIR.glob(f"{prefix}-*.md") if path.is_file())
+
+
+def daily_post_slots_remaining() -> int:
+    return max(0, DAILY_POST_LIMIT - daily_post_count())
 
 
 def _check_cooldown() -> None:
@@ -1849,7 +1864,23 @@ def main():
         f"judge_timeout={JUDGE_TIMEOUT_SECONDS}s, max_codex_calls≈{max_quality_calls + (TOPICS_PER_RUN * 3)}"
     )
 
-    # 0. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
+    # 0. Hard KST daily cap. This applies even to FORCE_RUN so n8n tracks
+    # cannot collectively flood the site with uncommitted local drafts.
+    existing_today = daily_post_count()
+    remaining_today = daily_post_slots_remaining()
+    if remaining_today == 0:
+        log.info(
+            f"⏭️ KST 일일 포스트 한도 도달: {existing_today}/{DAILY_POST_LIMIT}개 — 이번 실행은 건너뜁니다."
+        )
+        return
+
+    run_topic_limit = min(TOPICS_PER_RUN, remaining_today)
+    log.info(
+        f"📅 KST 일일 포스트 한도: 기존 {existing_today}/{DAILY_POST_LIMIT}개, "
+        f"이번 실행 최대 {run_topic_limit}개"
+    )
+
+    # 1. 쿨다운 체크: FORCE=true 환경변수가 있으면 스킵
     if not os.environ.get("FORCE_RUN"):
         _check_cooldown()
 
@@ -1880,17 +1911,20 @@ def main():
             log.error("❌ RSS에서 수집된 기사가 없어 포스팅을 건너뜁니다.")
             sys.exit(0)
 
-    # 4. 서로 다른 주제 선정 (셔플된 후보 풀에서)
-    selected_articles = select_articles_for_run(fresh, TOPICS_PER_RUN)
+    # 4. 서로 다른 주제 선정 (하드 일일 한도를 넘지 않도록)
+    selected_articles = select_articles_for_run(fresh, run_topic_limit)
     if not selected_articles:
         log.error("❌ 포스팅할 기사를 선정하지 못했습니다.")
         sys.exit(1)
 
-    log.info(f"🧵 이번 실행 선정 주제: {len(selected_articles)}개 / 목표 {TOPICS_PER_RUN}개")
+    log.info(f"🧵 이번 실행 선정 주제: {len(selected_articles)}개 / 일일 잔여 한도 {run_topic_limit}개")
     saved_paths: list[Path] = []
     failed_topics: list[str] = []
 
     for index, article in enumerate(selected_articles, start=1):
+        if daily_post_slots_remaining() == 0:
+            log.info(f"⏭️ KST 일일 포스트 한도 {DAILY_POST_LIMIT}개 도달 — 남은 주제는 저장하지 않습니다.")
+            break
         log.info(f"🧵 주제 {index}/{len(selected_articles)} 처리")
         try:
             saved_path = create_post_for_article(article, articles)
